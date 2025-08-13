@@ -40,7 +40,8 @@
             const SPEAK_TO_FINAL = 'CONFERENCE';
             const urlParams = new URLSearchParams(window.location.search);
             const conversationIdFromUrl = urlParams.get('conversationId');
-            const participantIdFromUrl = urlParams.get('participants');
+            const agentParticipantIdFromUrl = urlParams.get('agentParticipantId');
+            const customerParticipantIdFromUrl = urlParams.get('customerParticipantId');
             const consultingUserIdFromUrl = urlParams.get('consultingUserId');
 
             function getTokenAndStateFromHash() {
@@ -50,7 +51,8 @@
                 const state = params.get('state');
                 console.log("Received state:", state);
                 let conversationId = null;
-                let participantId = null;
+                let agentParticipantId = null;
+                let customerParticipantId = null;
                 let consultingUserId = null;
 
                 if (state) {
@@ -58,27 +60,29 @@
                         const decodedState = decodeURIComponent(state);
                         const parsed = JSON.parse(atob(decodedState));
                         conversationId = parsed.conversationId;
-                        participantId = parsed.participantId;
+                        agentParticipantId = parsed.agentParticipantId;
+                        customerParticipantId = parsed.customerParticipantId;
                         consultingUserId = parsed.consultingUserId;
                     } catch (e) {
                         console.error("Error decoding state:", e);
                     }
                 }
 
-                return { token, conversationId, participantId, consultingUserId };
+                return { token, conversationId, agentParticipantId, customerParticipantId, consultingUserId };
             }
 
-            const { token: gToken, conversationId, participantId, consultingUserId } = getTokenAndStateFromHash();
+            const { token: gToken, conversationId, agentParticipantId, customerParticipantId, consultingUserId } = getTokenAndStateFromHash();
 
             if (!gToken) {
-                if (!conversationIdFromUrl || !participantIdFromUrl || !consultingUserIdFromUrl) {
+                if (!conversationIdFromUrl || !agentParticipantIdFromUrl || !customerParticipantIdFromUrl || !consultingUserIdFromUrl) {
                     alert("Missing parameters in the URL. Cannot continue.");
                     throw new Error("Missing parameters in the URL");
                 }
 
                 const state = btoa(JSON.stringify({
                     conversationId: conversationIdFromUrl,
-                    participantId: participantIdFromUrl,
+                    agentParticipantId: agentParticipantIdFromUrl,
+                    customerParticipantId: customerParticipantIdFromUrl,
                     consultingUserId: consultingUserIdFromUrl                
                 }));
                 console.log("Redirecting with state:", state);
@@ -94,7 +98,8 @@
             } else {
                 console.log("Token obtained:", gToken);
                 console.log("conversationId:", conversationId);
-                console.log("participantId:", participantId);
+                console.log("agentParticipantId:", agentParticipantId);
+                console.log("customerParticipantId:", customerParticipantId);
                 console.log("consultingUserId:", consultingUserId);            
 
                 const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
@@ -124,7 +129,7 @@
                     try {
                         // Step 1: POST consult
                         await makeApiCall(
-                            `${BASE_API_URL}/participants/${participantId}/consult`,
+                            `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
                             'POST',
                             {
                                 speakTo: SPEAK_TO_INITIAL,
@@ -137,7 +142,7 @@
 
                         // Step 2: PATCH consult
                         await makeApiCall(
-                            `${BASE_API_URL}/participants/${participantId}/consult`,
+                            `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
                             'PATCH',
                             {
                                 speakTo: SPEAK_TO_FINAL,
@@ -147,7 +152,7 @@
 
                         // Step 3: PATCH participant held
                         await makeApiCall(
-                            `${BASE_API_URL}/participants/${participantId}`,
+                            `${BASE_API_URL}/participants/${agentParticipantId}`,
                             'PATCH',
                             {
                                 held: true
