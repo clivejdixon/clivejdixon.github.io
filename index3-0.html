@@ -40,6 +40,7 @@
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
             const SHOWDEBUG = true; // Set to false to hide debug information
+            const WAITTIME = 2000;
 
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
@@ -191,22 +192,46 @@
 
                         // 2 second pause
                         addDebugLine('⏳ Waiting 2 seconds...');
-                        await sleep(2000);
+                        await sleep(WAITTIME);
 
-                        // Step 2: PATCH consult
-                        await makeApiCall(
-                            `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
-                            'PATCH',
-                            {
-                                speakTo: SPEAK_TO_FINAL,
-                                consultingUserId: consultingUserId
-                            },
-                            'STEP 2: Updating consultation speak mode'
-                        );
+                        // Step 2: Try PATCH consult first, fallback to POST participants
+                        let step2Success = false;
+                        try {
+                            // Step 2a: PATCH consult
+                            await makeApiCall(
+                                `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
+                                'PATCH',
+                                {
+                                    speakTo: SPEAK_TO_FINAL,
+                                    consultingUserId: consultingUserId
+                                },
+                                'STEP 2a: Updating consultation speak mode'
+                            );
+                            step2Success = true;
+                        } catch (error) {
+                            addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
+                            
+                            try {
+                                // Step 2b: POST participants (fallback)
+                                await makeApiCall(
+                                    `${BASE_API_URL}/participants`,
+                                    'POST',
+                                    {
+                                        "participants": [{"queueId": QUEUE_ID}]
+                                    },
+                                    'STEP 2b: Adding queue to conference (fallback)'
+                                );
+                                step2Success = true;
+                                addDebugLine('✅ Step 2b fallback succeeded');
+                            } catch (fallbackError) {
+                                addDebugLine(`❌ Both Step 2a and 2b failed`);
+                                throw fallbackError; // Re-throw to trigger main error handling
+                            }
+                        }
 
                         // 2 second pause
                         addDebugLine('⏳ Waiting 2 seconds...');
-                        await sleep(2000);
+                        await sleep(WAITTIME);
 
                         // Step 3: PATCH participant held
                         await makeApiCall(
