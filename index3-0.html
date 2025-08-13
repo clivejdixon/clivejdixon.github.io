@@ -26,6 +26,7 @@
         <div class="center">
             <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
             <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
+            <div id="DebugOutput" style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 5px; font-family: monospace; font-size: 12px; text-align: left; white-space: pre-wrap; max-height: 400px; overflow-y: auto; display: none;"></div>
             <table class="redTable">
                 <tbody id="tabla-container"></tbody>
             </table>
@@ -38,6 +39,7 @@
             const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
+            const SHOWDEBUG = true; // Set to false to hide debug information
 
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
@@ -122,8 +124,28 @@
 
                 const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
 
-                async function makeApiCall(endpoint, method, data) {
+                // Initialize debug display
+                const debugOutput = document.getElementById("DebugOutput");
+                if (SHOWDEBUG) {
+                    debugOutput.style.display = 'block';
+                }
+
+                function addDebugLine(message) {
+                    if (SHOWDEBUG) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        debugOutput.textContent += `[${timestamp}] ${message}\n`;
+                        debugOutput.scrollTop = debugOutput.scrollHeight;
+                    }
+                }
+
+                function sleep(ms) {
+                    return new Promise(resolve => setTimeout(resolve, ms));
+                }
+
+                async function makeApiCall(endpoint, method, data, description = '') {
                     try {
+                        addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
+                        
                         const response = await $.ajax({
                             url: endpoint,
                             type: method,
@@ -133,16 +155,24 @@
                             data: JSON.stringify(data),
                             contentType: 'application/json'
                         });
+                        
                         console.log(`${method} response:`, response);
+                        addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
                         return response;
                     } catch (error) {
                         console.error(`${method} error:`, error);
+                        const errorText = error.responseText || error.statusText || error.message || 'Unknown error';
+                        const statusCode = error.status || 'Unknown';
+                        addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
                         throw error;
                     }
                 }
 
                 window.startSequence = async function() {
                     document.getElementById("ConfirmationMessage").textContent = "Processing...";
+                    if (SHOWDEBUG) {
+                        debugOutput.textContent = ''; // Clear previous debug output
+                    }
 
                     try {
                         // Step 1: POST consult
@@ -155,8 +185,13 @@
                                     queueId: QUEUE_ID
                                 },
                                 consultingUserId: consultingUserId
-                            }
+                            },
+                            'STEP 1: Creating consultation'
                         );
+
+                        // 2 second pause
+                        addDebugLine('⏳ Waiting 2 seconds...');
+                        await sleep(2000);
 
                         // Step 2: PATCH consult
                         await makeApiCall(
@@ -165,8 +200,13 @@
                             {
                                 speakTo: SPEAK_TO_FINAL,
                                 consultingUserId: consultingUserId
-                            }
+                            },
+                            'STEP 2: Updating consultation speak mode'
                         );
+
+                        // 2 second pause
+                        addDebugLine('⏳ Waiting 2 seconds...');
+                        await sleep(2000);
 
                         // Step 3: PATCH participant held
                         await makeApiCall(
@@ -174,12 +214,15 @@
                             'PATCH',
                             {
                                 held: true
-                            }
+                            },
+                            'STEP 3: Placing agent on hold'
                         );
 
+                        addDebugLine('🎉 All steps completed successfully!');
                         document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
                     } catch (error) {
                         console.error("Sequence error:", error);
+                        addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
                         document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
                     }
                 };
