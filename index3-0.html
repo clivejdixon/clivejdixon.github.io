@@ -13,149 +13,153 @@
                 border: none;
                 border-radius: 5px;
                 cursor: pointer;
-                font-size: 12px;
+                font-size: 14px;
                 margin-top: 0px;
+            }
+            
+            .center {
+                text-align: center;
             }
         </style>
     </head>
     <body>
-    <center>
-        <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
-        <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
-        <table class="redTable">
-            <tbody id="tabla-container"></tbody>
-        </table>
+        <div class="center">
+            <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
+            <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
+            <table class="redTable">
+                <tbody id="tabla-container"></tbody>
+            </table>
+        </div>
     
-    <script>
-        const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1'; 
-        const ENVIRONMENT = 'euw2.pure.cloud';
-        const REDIRECT_URI = 'https://clivejdixon.github.io/index3-0.html';
-        const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';// Queue ID for Wholesale_Global_EN_ResetTSN_Q
-        const SPEAK_TO_INITIAL = 'BOTH'; // Set your default value here 
-        const SPEAK_TO_FINAL = 'CONFERENCE'; // Set your default value here
-        const urlParams = new URLSearchParams(window.location.search);
-        const conversationIdFromUrl = urlParams.get('conversationId');
-        const participantIdFromUrl = urlParams.get('participants');
-        const consultingUserIdFromUrl = urlParams.get('consultingUserId');
+        <script>
+            const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1'; 
+            const ENVIRONMENT = 'euw2.pure.cloud';
+            const REDIRECT_URI = 'https://clivejdixon.github.io/index3-0.html';
+            const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
+            const SPEAK_TO_INITIAL = 'BOTH';
+            const SPEAK_TO_FINAL = 'CONFERENCE';
+            const urlParams = new URLSearchParams(window.location.search);
+            const conversationIdFromUrl = urlParams.get('conversationId');
+            const participantIdFromUrl = urlParams.get('participants');
+            const consultingUserIdFromUrl = urlParams.get('consultingUserId');
 
-        function getTokenAndStateFromHash() {
-            const hash = window.location.hash.substring(1);
-            const params = new URLSearchParams(hash);
-            const token = params.get('access_token');
-            const state = params.get('state');
-            console.log("Received state:", state);
-            let conversationId = null;
-            let participantId = null;
-            let consultingUserId = null;
+            function getTokenAndStateFromHash() {
+                const hash = window.location.hash.substring(1);
+                const params = new URLSearchParams(hash);
+                const token = params.get('access_token');
+                const state = params.get('state');
+                console.log("Received state:", state);
+                let conversationId = null;
+                let participantId = null;
+                let consultingUserId = null;
 
-            if (state) {
-                try {
-                    const decodedState = decodeURIComponent(state);
-                    const parsed = JSON.parse(atob(decodedState));
-                    conversationId = parsed.conversationId;
-                    participantId = parsed.participantId;
-                    consultingUserId = parsed.consultingUserId;
-                } catch (e) {
-                    console.error("Error decoding state:", e);
+                if (state) {
+                    try {
+                        const decodedState = decodeURIComponent(state);
+                        const parsed = JSON.parse(atob(decodedState));
+                        conversationId = parsed.conversationId;
+                        participantId = parsed.participantId;
+                        consultingUserId = parsed.consultingUserId;
+                    } catch (e) {
+                        console.error("Error decoding state:", e);
+                    }
                 }
+
+                return { token, conversationId, participantId, consultingUserId };
             }
 
-            return { token, conversationId, participantId, consultingUserId };
-        }
+            const { token: gToken, conversationId, participantId, consultingUserId } = getTokenAndStateFromHash();
 
-        const { token: gToken, conversationId, participantId, consultingUserId } = getTokenAndStateFromHash();
+            if (!gToken) {
+                if (!conversationIdFromUrl || !participantIdFromUrl || !consultingUserIdFromUrl) {
+                    alert("Missing parameters in the URL. Cannot continue.");
+                    throw new Error("Missing parameters in the URL");
+                }
 
-        if (!gToken) {
-            if (!conversationIdFromUrl || !participantIdFromUrl || !consultingUserIdFromUrl) {
-                alert("Missing parameters in the URL. Cannot continue.");
-                throw new Error("Missing parameters in the URL");
-            }
+                const state = btoa(JSON.stringify({
+                    conversationId: conversationIdFromUrl,
+                    participantId: participantIdFromUrl,
+                    consultingUserId: consultingUserIdFromUrl                
+                }));
+                console.log("Redirecting with state:", state);
 
-            const state = btoa(JSON.stringify({
-                conversationId: conversationIdFromUrl,
-                participantId: participantIdFromUrl,
-                consultingUserId: consultingUserIdFromUrl                
-            }));
-            console.log("Redirecting with state:", state);
-
-            const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
-                $.param({
-                    response_type: 'token',
-                    client_id: CLIENT_ID,
-                    redirect_uri: REDIRECT_URI,
-                    state: state
-                });
-            window.location.replace(authUrl);
-        } else {
-            console.log("Token obtained:", gToken);
-            console.log("conversationId:", conversationId);
-            console.log("participantId:", participantId);
-            console.log("consultingUserId:", consultingUserId);            
-
-            const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
-
-            async function makeApiCall(endpoint, method, data) {
-                try {
-                    const response = await $.ajax({
-                        url: endpoint,
-                        type: method,
-                        beforeSend: function(xhr) {
-                            xhr.setRequestHeader('Authorization', 'Bearer ' + gToken);
-                        },
-                        data: JSON.stringify(data),
-                        contentType: 'application/json'
+                const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
+                    $.param({
+                        response_type: 'token',
+                        client_id: CLIENT_ID,
+                        redirect_uri: REDIRECT_URI,
+                        state: state
                     });
-                    console.log(`${method} response:`, response);
-                    return response;
-                } catch (error) {
-                    console.error(`${method} error:`, error);
-                    throw error;
-                }
-            }
+                window.location.replace(authUrl);
+            } else {
+                console.log("Token obtained:", gToken);
+                console.log("conversationId:", conversationId);
+                console.log("participantId:", participantId);
+                console.log("consultingUserId:", consultingUserId);            
 
-            window.startSequence = async function() {
-                document.getElementById("ConfirmationMessage").textContent = "Processing...";
+                const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
 
-                try {
-                    // Step 1: POST consult
-                    await makeApiCall(
-                        `${BASE_API_URL}/participants/${participantId}/consult`,
-                        'POST',
-                        {
-                            speakTo: SPEAK_TO_INITIAL,
-                            destination: {
-                                queueId: QUEUE_ID
+                async function makeApiCall(endpoint, method, data) {
+                    try {
+                        const response = await $.ajax({
+                            url: endpoint,
+                            type: method,
+                            beforeSend: function(xhr) {
+                                xhr.setRequestHeader('Authorization', 'Bearer ' + gToken);
                             },
-                            consultingUserId: ${consultingUserId}
-                        }
-                    );
-
-                    // Step 2: PATCH consult
-                    await makeApiCall(
-                        `${BASE_API_URL}/participants/${participantId}/consult`,
-                        'PATCH',
-                        {
-                            speakTo: SPEAK_TO_FINAL,
-                            consultingUserId: ${consultingUserId}
-                        }
-                    );
-
-                    // Step 3: PATCH participant held
-                    await makeApiCall(
-                        `${BASE_API_URL}/participants/${participantId}`,
-                        'PATCH',
-                        {
-                            held: true
-                        }
-                    );
-
-                    document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
-                } catch (error) {
-                    document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution.";
+                            data: JSON.stringify(data),
+                            contentType: 'application/json'
+                        });
+                        console.log(`${method} response:`, response);
+                        return response;
+                    } catch (error) {
+                        console.error(`${method} error:`, error);
+                        throw error;
+                    }
                 }
-            };
-        }
-    </script>
-    </center>
+
+                window.startSequence = async function() {
+                    document.getElementById("ConfirmationMessage").textContent = "Processing...";
+
+                    try {
+                        // Step 1: POST consult
+                        await makeApiCall(
+                            `${BASE_API_URL}/participants/${participantId}/consult`,
+                            'POST',
+                            {
+                                speakTo: SPEAK_TO_INITIAL,
+                                destination: {
+                                    queueId: QUEUE_ID
+                                },
+                                consultingUserId: consultingUserId
+                            }
+                        );
+
+                        // Step 2: PATCH consult
+                        await makeApiCall(
+                            `${BASE_API_URL}/participants/${participantId}/consult`,
+                            'PATCH',
+                            {
+                                speakTo: SPEAK_TO_FINAL,
+                                consultingUserId: consultingUserId
+                            }
+                        );
+
+                        // Step 3: PATCH participant held
+                        await makeApiCall(
+                            `${BASE_API_URL}/participants/${participantId}`,
+                            'PATCH',
+                            {
+                                held: true
+                            }
+                        );
+
+                        document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                    } catch (error) {
+                        document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution.";
+                    }
+                };
+            }
+        </script>
     </body>
 </html>
