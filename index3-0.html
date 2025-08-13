@@ -176,19 +176,61 @@
                     }
 
                     try {
-                        // Step 1: POST consult
-                        await makeApiCall(
-                            `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
-                            'POST',
-                            {
-                                speakTo: SPEAK_TO_INITIAL,
-                                destination: {
-                                    queueId: QUEUE_ID
+                        // Step 1: Try POST consult first, fallback to POST participants
+                        let step1Success = false;
+                        try {
+                            // Step 1a: POST consult
+                            await makeApiCall(
+                                `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
+                                'POST',
+                                {
+                                    speakTo: SPEAK_TO_INITIAL,
+                                    destination: {
+                                        queueId: QUEUE_ID
+                                    },
+                                    consultingUserId: consultingUserId
                                 },
-                                consultingUserId: consultingUserId
-                            },
-                            'STEP 1: Creating consultation'
-                        );
+                                'STEP 1a: Creating consultation'
+                            );
+                            step1Success = true;
+                        } catch (error) {
+                            addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
+                            
+                            try {
+                                // Step 1b: POST participants (fallback)
+                                await makeApiCall(
+                                    `${BASE_API_URL}/participants`,
+                                    'POST',
+                                    {
+                                        "participants": [{"queueId": QUEUE_ID}]
+                                    },
+                                    'STEP 1b: Adding queue to conference (fallback)'
+                                );
+                                step1Success = true;
+                                addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
+                                
+                                // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
+                                addDebugLine('⏳ Waiting 2 seconds before final step...');
+                                await sleep(WAITTIME);
+                                
+                                // Step 3: PATCH participant held
+                                await makeApiCall(
+                                    `${BASE_API_URL}/participants/${agentParticipantId}`,
+                                    'PATCH',
+                                    {
+                                        held: true
+                                    },
+                                    'STEP 3: Placing agent on hold'
+                                );
+
+                                addDebugLine('🎉 All steps completed successfully!');
+                                document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                                return; // Exit early since we've completed the sequence
+                            } catch (fallbackError) {
+                                addDebugLine(`❌ Both Step 1a and 1b failed`);
+                                throw fallbackError; // Re-throw to trigger main error handling
+                            }
+                        }
 
                         // 2 second pause
                         addDebugLine('⏳ Waiting 2 seconds...');
