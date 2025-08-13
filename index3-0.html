@@ -14,17 +14,14 @@
                 border-radius: 5px;
                 cursor: pointer;
                 font-size: 16px;
+                margin-top: 20px;
             }
         </style>
     </head>
     <body>
     <center>
-        <h1>Call Management</h1>
-        <br>
-        <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
-        <br>
         <button class="action-button" onclick="startSequence()">Start Call Sequence</button>
-        <br>
+        <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
         <table class="redTable">
             <tbody id="tabla-container"></tbody>
         </table>
@@ -33,12 +30,13 @@
         const CLIENT_ID = 'e1f0834d-492c-40ff-9446-85e5e521eff4'; 
         const ENVIRONMENT = 'euw2.pure.cloud';
         const REDIRECT_URI = 'https://clivejdixon.github.io/index3-0.html';
-        const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
-        const SPEAK_TO = 'BOTH'; // Set your default value here
-        const CONSULTING_USER_ID = 'your-consulting-user-id'; // Set your default value here
+        const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';// Queue ID for Wholesale_Global_EN_ResetTSN_Q
+        const SPEAK_TO_INITIAL = 'BOTH'; // Set your default value here 
+        const SPEAK_TO_FINAL = 'CONFERENCE'; // Set your default value here
         const urlParams = new URLSearchParams(window.location.search);
         const conversationIdFromUrl = urlParams.get('conversationId');
         const participantIdFromUrl = urlParams.get('participants');
+        const consultingUserIdFromUrl = urlParams.get('consultingUserId');
 
         function getTokenAndStateFromHash() {
             const hash = window.location.hash.substring(1);
@@ -48,6 +46,7 @@
             console.log("Received state:", state);
             let conversationId = null;
             let participantId = null;
+            let consultingUserId = null;
 
             if (state) {
                 try {
@@ -55,25 +54,27 @@
                     const parsed = JSON.parse(atob(decodedState));
                     conversationId = parsed.conversationId;
                     participantId = parsed.participantId;
+                    consultingUserId = parsed.consultingUserId;
                 } catch (e) {
                     console.error("Error decoding state:", e);
                 }
             }
 
-            return { token, conversationId, participantId };
+            return { token, conversationId, participantId, consultingUserId };
         }
 
-        const { token: gToken, conversationId, participantId } = getTokenAndStateFromHash();
+        const { token: gToken, conversationId, participantId, consultingUserId } = getTokenAndStateFromHash();
 
         if (!gToken) {
-            if (!conversationIdFromUrl || !participantIdFromUrl) {
+            if (!conversationIdFromUrl || !participantIdFromUrl || !consultingUserIdFromUrl) {
                 alert("Missing parameters in the URL. Cannot continue.");
                 throw new Error("Missing parameters in the URL");
             }
 
             const state = btoa(JSON.stringify({
                 conversationId: conversationIdFromUrl,
-                participantId: participantIdFromUrl
+                participantId: participantIdFromUrl,
+                consultingUserId: consultingUserIdFromUrl                
             }));
             console.log("Redirecting with state:", state);
 
@@ -89,6 +90,7 @@
             console.log("Token obtained:", gToken);
             console.log("conversationId:", conversationId);
             console.log("participantId:", participantId);
+            console.log("consultingUserId:", consultingUserId);            
 
             const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
 
@@ -120,11 +122,11 @@
                         `${BASE_API_URL}/participants/${participantId}/consult`,
                         'POST',
                         {
-                            speakTo: SPEAK_TO,
+                            speakTo: SPEAK_TO_INITIAL,
                             destination: {
                                 queueId: QUEUE_ID
                             },
-                            consultingUserId: CONSULTING_USER_ID
+                            consultingUserId: ${consultingUserId}
                         }
                     );
 
@@ -133,8 +135,8 @@
                         `${BASE_API_URL}/participants/${participantId}/consult`,
                         'PATCH',
                         {
-                            speakTo: SPEAK_TO,
-                            consultingUserId: CONSULTING_USER_ID
+                            speakTo: SPEAK_TO_FINAL,
+                            consultingUserId: ${consultingUserId}
                         }
                     );
 
