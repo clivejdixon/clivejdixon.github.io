@@ -38,11 +38,6 @@
             const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
-            const urlParams = new URLSearchParams(window.location.search);
-            const conversationIdFromUrl = urlParams.get('conversationId');
-            const agentParticipantIdFromUrl = urlParams.get('agentParticipantId');
-            const customerParticipantIdFromUrl = urlParams.get('customerParticipantId');
-            const consultingUserIdFromUrl = urlParams.get('consultingUserId');
 
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
@@ -63,6 +58,7 @@
                         agentParticipantId = parsed.agentParticipantId;
                         customerParticipantId = parsed.customerParticipantId;
                         consultingUserId = parsed.consultingUserId;
+                        console.log("Parsed from state:", parsed);
                     } catch (e) {
                         console.error("Error decoding state:", e);
                     }
@@ -71,19 +67,35 @@
                 return { token, conversationId, agentParticipantId, customerParticipantId, consultingUserId };
             }
 
-            const { token: gToken, conversationId, agentParticipantId, customerParticipantId, consultingUserId } = getTokenAndStateFromHash();
+            function getParametersFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return {
+                    conversationId: urlParams.get('conversationId'),
+                    agentParticipantId: urlParams.get('agentParticipantId'),
+                    customerParticipantId: urlParams.get('customerParticipantId'),
+                    consultingUserId: urlParams.get('consultingUserId')
+                };
+            }
 
+            // First try to get parameters from OAuth callback (hash)
+            let { token: gToken, conversationId, agentParticipantId, customerParticipantId, consultingUserId } = getTokenAndStateFromHash();
+
+            // If no token, we need to start OAuth flow
             if (!gToken) {
-                if (!conversationIdFromUrl || !agentParticipantIdFromUrl || !customerParticipantIdFromUrl || !consultingUserIdFromUrl) {
+                // Get parameters from URL
+                const urlParams = getParametersFromUrl();
+                
+                if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
                     alert("Missing parameters in the URL. Cannot continue.");
                     throw new Error("Missing parameters in the URL");
                 }
 
+                // Store parameters in state for OAuth flow
                 const state = btoa(JSON.stringify({
-                    conversationId: conversationIdFromUrl,
-                    agentParticipantId: agentParticipantIdFromUrl,
-                    customerParticipantId: customerParticipantIdFromUrl,
-                    consultingUserId: consultingUserIdFromUrl                
+                    conversationId: urlParams.conversationId,
+                    agentParticipantId: urlParams.agentParticipantId,
+                    customerParticipantId: urlParams.customerParticipantId,
+                    consultingUserId: urlParams.consultingUserId                
                 }));
                 console.log("Redirecting with state:", state);
 
@@ -96,6 +108,12 @@
                     });
                 window.location.replace(authUrl);
             } else {
+                // We have a token, parameters should be in the state
+                if (!conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
+                    alert("Missing parameters in OAuth callback. Cannot continue.");
+                    throw new Error("Missing parameters in OAuth callback");
+                }
+
                 console.log("Token obtained:", gToken);
                 console.log("conversationId:", conversationId);
                 console.log("agentParticipantId:", agentParticipantId);
@@ -161,7 +179,8 @@
 
                         document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
                     } catch (error) {
-                        document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution.";
+                        console.error("Sequence error:", error);
+                        document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
                     }
                 };
             }
