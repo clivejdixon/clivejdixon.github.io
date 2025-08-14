@@ -170,8 +170,8 @@
                 }
 
                 window.startSequence = async function() {
-                    document.getElementById("ConfirmationMessage").textContent = "Processing...";
                     if (SHOWDEBUG) {
+                        document.getElementById("ConfirmationMessage").textContent = "Processing...";
                         debugOutput.textContent = ''; // Clear previous debug output
                     }
 
@@ -224,7 +224,9 @@
                                 );
 
                                 addDebugLine('🎉 All steps completed successfully!');
-                                document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                                if (SHOWDEBUG) {
+                                    document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                                }
                                 return; // Exit early since we've completed the sequence
                             } catch (fallbackError) {
                                 addDebugLine(`❌ Both Step 1a and 1b failed`);
@@ -286,11 +288,15 @@
                         );
 
                         addDebugLine('🎉 All steps completed successfully!');
-                        document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                        if (SHOWDEBUG) {
+                            document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                        }
                     } catch (error) {
                         console.error("Sequence error:", error);
                         addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                        document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
+                        if (SHOWDEBUG) {
+                            document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
+                        }
                     }
                 };
             }
