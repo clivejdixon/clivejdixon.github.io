@@ -25,8 +25,8 @@
     <body>
         <div class="center">
             <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
-            <!--div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div-->
-            <!--div id="DebugOutput" style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 5px; font-family: monospace; font-size: 12px; text-align: left; white-space: pre-wrap; max-height: 400px; overflow-y: auto; display: none;"></div-->
+            <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
+            <div id="DebugOutput" style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 5px; font-family: monospace; font-size: 12px; text-align: left; white-space: pre-wrap; max-height: 400px; overflow-y: auto; display: none;"></div>
             <table class="redTable">
                 <tbody id="tabla-container"></tbody>
             </table>
@@ -41,6 +41,11 @@
             const SPEAK_TO_FINAL = 'CONFERENCE';
             const SHOWDEBUG = true; // Set to false to hide debug information
             const WAITTIME = 1000;
+
+            // WebSocket variables
+            let websocket = null;
+            let notificationChannelId = null;
+            let isMonitoringParticipants = false;
 
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
@@ -145,7 +150,9 @@
 
                 async function makeApiCall(endpoint, method, data, description = '') {
                     try {
-                        addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
+                        if (SHOWDEBUG) {
+                            addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
+                        }
                         
                         const response = await $.ajax({
                             url: endpoint,
@@ -158,24 +165,157 @@
                         });
                         
                         console.log(`${method} response:`, response);
-                        addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
+                        if (SHOWDEBUG) {
+                            addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
+                        }
                         return response;
                     } catch (error) {
                         console.error(`${method} error:`, error);
                         const errorText = error.responseText || error.statusText || error.message || 'Unknown error';
                         const statusCode = error.status || 'Unknown';
-                        addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
+                        if (SHOWDEBUG) {
+                            addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
+                        }
                         throw error;
                     }
                 }
 
+                // WebSocket notification functions
+                async function setupWebSocketNotifications() {
+                    try {
+                        // Step 1: Create notification channel
+                        if (SHOWDEBUG) addDebugLine('🔌 Setting up WebSocket notifications...');
+                        
+                        const channelResponse = await makeApiCall(
+                            `https://api.${ENVIRONMENT}/api/v2/notifications/channels`,
+                            'POST',
+                            {},
+                            'Creating notification channel'
+                        );
+                        
+                        notificationChannelId = channelResponse.id;
+                        const websocketUri = channelResponse.connectUri;
+                        
+                        // Step 2: Subscribe to conversation events
+                        await makeApiCall(
+                            `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
+                            'POST',
+                            {
+                                topicName: `v2.conversations.calls.${conversationId}`
+                            },
+                            'Subscribing to conversation notifications'
+                        );
+                        
+                        // Step 3: Connect WebSocket
+                        websocket = new WebSocket(websocketUri);
+                        
+                        websocket.onopen = function() {
+                            if (SHOWDEBUG) addDebugLine('✅ WebSocket connected successfully');
+                        };
+                        
+                        websocket.onmessage = function(event) {
+                            const notification = JSON.parse(event.data);
+                            handleParticipantNotification(notification);
+                        };
+                        
+                        websocket.onerror = function(error) {
+                            console.error('WebSocket error:', error);
+                            if (SHOWDEBUG) addDebugLine('❌ WebSocket error: ' + JSON.stringify(error));
+                        };
+                        
+                        websocket.onclose = function() {
+                            if (SHOWDEBUG) addDebugLine('🔌 WebSocket connection closed');
+                        };
+                        
+                    } catch (error) {
+                        console.error('Failed to setup WebSocket notifications:', error);
+                        if (SHOWDEBUG) addDebugLine('❌ Failed to setup WebSocket: ' + error.message);
+                        throw error;
+                    }
+                }
+
+                function handleParticipantNotification(notification) {
+                    if (!isMonitoringParticipants) return;
+                    
+                    // Check if this is a conversation participant event
+                    if (notification.topicName && notification.topicName.includes('conversations.calls') && notification.eventBody) {
+                        const participants = notification.eventBody.participants || [];
+                        
+                        // Count active participants (connected, alerting, or held)
+                        const activeParticipants = participants.filter(p => 
+                            p.state === 'connected' || 
+                            p.state === 'alerting' || 
+                            (p.state === 'held' && p.held === true)
+                        );
+                        
+                        if (SHOWDEBUG) {
+                            addDebugLine(`📊 Participant update: ${activeParticipants.length} active participants`);
+                            activeParticipants.forEach((p, i) => {
+                                addDebugLine(`   ${i+1}. ID: ${p.id.substring(0,8)}... State: ${p.state} Held: ${p.held || false}`);
+                            });
+                        }
+                        
+                        // Check if we now have only 2 participants (agent + one other)
+                        if (activeParticipants.length <= 2) {
+                            if (SHOWDEBUG) addDebugLine('🎯 Only 2 participants remaining - taking agent off hold...');
+                            
+                            // Stop monitoring to prevent multiple triggers
+                            isMonitoringParticipants = false;
+                            
+                            // Take agent off hold
+                            takeAgentOffHold();
+                        }
+                    }
+                }
+
+                async function takeAgentOffHold() {
+                    try {
+                        await makeApiCall(
+                            `${BASE_API_URL}/participants/${agentParticipantId}`,
+                            'PATCH',
+                            {
+                                held: false
+                            },
+                            'FINAL STEP: Taking agent off hold'
+                        );
+                        
+                        if (SHOWDEBUG) addDebugLine('🎉 Agent taken off hold - TSN Reset sequence complete!');
+                        document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed - Agent off hold";
+                        
+                        // Clean up WebSocket after successful completion
+                        cleanupWebSocket();
+                        
+                    } catch (error) {
+                        console.error("Error taking agent off hold:", error);
+                        if (SHOWDEBUG) addDebugLine(`❌ Error taking agent off hold: ${error.responseText || error.message}`);
+                        document.getElementById("ConfirmationMessage").textContent = "❌ Error taking agent off hold";
+                    }
+                }
+
+                function cleanupWebSocket() {
+                    if (websocket) {
+                        websocket.close();
+                        websocket = null;
+                        if (SHOWDEBUG) addDebugLine('🧹 WebSocket cleaned up');
+                    }
+                    isMonitoringParticipants = false;
+                }
+
+                // Clean up on page unload
+                window.addEventListener('beforeunload', function() {
+                    cleanupWebSocket();
+                });
+
                 window.startSequence = async function() {
+                    document.getElementById("ConfirmationMessage").textContent = "Processing...";
                     if (SHOWDEBUG) {
-                        // document.getElementById("ConfirmationMessage").textContent = "Processing...";
                         debugOutput.textContent = ''; // Clear previous debug output
                     }
 
                     try {
+                        // Setup WebSocket notifications first
+                        await setupWebSocketNotifications();
+                        
                         // Step 1: Try POST consult first, fallback to POST participants
                         let step1Success = false;
                         try {
@@ -194,7 +334,7 @@
                             );
                             step1Success = true;
                         } catch (error) {
-                            addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
+                            if (SHOWDEBUG) addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
                             
                             try {
                                 // Step 1b: POST participants (fallback)
@@ -207,10 +347,10 @@
                                     'STEP 1b: Adding queue to conference (fallback)'
                                 );
                                 step1Success = true;
-                                addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
+                                if (SHOWDEBUG) addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
                                 
                                 // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
-                                addDebugLine('⏳ Waiting 2 seconds before final step...');
+                                if (SHOWDEBUG) addDebugLine('⏳ Waiting 1 second before final step...');
                                 await sleep(WAITTIME);
                                 
                                 // Step 3: PATCH participant held
@@ -223,17 +363,20 @@
                                     'STEP 3: Placing agent on hold'
                                 );
 
-                                addDebugLine('🎉 All steps completed successfully!');
-                                //    document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                                // Start monitoring for participant changes
+                                isMonitoringParticipants = true;
+                                if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for participant disconnections...');
+                                document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                                
                                 return; // Exit early since we've completed the sequence
                             } catch (fallbackError) {
-                                addDebugLine(`❌ Both Step 1a and 1b failed`);
+                                if (SHOWDEBUG) addDebugLine(`❌ Both Step 1a and 1b failed`);
                                 throw fallbackError; // Re-throw to trigger main error handling
                             }
                         }
 
-                        // 2 second pause
-                        addDebugLine('⏳ Waiting 2 seconds...');
+                        // Wait time pause
+                        if (SHOWDEBUG) addDebugLine('⏳ Waiting 1 second...');
                         await sleep(WAITTIME);
 
                         // Step 2: Try PATCH consult first, fallback to POST participants
@@ -251,7 +394,7 @@
                             );
                             step2Success = true;
                         } catch (error) {
-                            addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
+                            if (SHOWDEBUG) addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
                             
                             try {
                                 // Step 2b: POST participants (fallback)
@@ -264,15 +407,15 @@
                                     'STEP 2b: Adding queue to conference (fallback)'
                                 );
                                 step2Success = true;
-                                addDebugLine('✅ Step 2b fallback succeeded');
+                                if (SHOWDEBUG) addDebugLine('✅ Step 2b fallback succeeded');
                             } catch (fallbackError) {
-                                addDebugLine(`❌ Both Step 2a and 2b failed`);
+                                if (SHOWDEBUG) addDebugLine(`❌ Both Step 2a and 2b failed`);
                                 throw fallbackError; // Re-throw to trigger main error handling
                             }
                         }
 
-                        // 2 second pause
-                        addDebugLine('⏳ Waiting 2 seconds...');
+                        // Wait time pause
+                        if (SHOWDEBUG) addDebugLine('⏳ Waiting 1 second...');
                         await sleep(WAITTIME);
 
                         // Step 3: PATCH participant held
@@ -285,12 +428,19 @@
                             'STEP 3: Placing agent on hold'
                         );
 
-                        addDebugLine('🎉 All steps completed successfully!');
-                        //    document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                        // Start monitoring for participant changes
+                        isMonitoringParticipants = true;
+                        if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for participant disconnections...');
+                        if (SHOWDEBUG) addDebugLine('🎉 Initial sequence completed successfully!');
+                        document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                        
                     } catch (error) {
                         console.error("Sequence error:", error);
-                        addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                        //    document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
+                        if (SHOWDEBUG) addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
+                        document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
+                        
+                        // Clean up on error
+                        cleanupWebSocket();
                     }
                 };
             }
