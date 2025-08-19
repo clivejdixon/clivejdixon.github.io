@@ -200,9 +200,9 @@
                         await makeApiCall(
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                             'POST',
-                            {
+                            [{
                                 topicName: `v2.conversations.calls.${conversationId}`
-                            },
+                            }],
                             'Subscribing to conversation notifications'
                         );
                         
