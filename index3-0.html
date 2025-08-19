@@ -201,7 +201,7 @@
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                             'POST',
                             [{
-                                topicName: `v2.conversations.calls.${conversationId}`
+                                topicName: `v2.detail.events.conversation.${conversationId}.attributes`
                             }],
                             'Subscribing to conversation notifications'
                         );
