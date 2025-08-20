@@ -210,9 +210,9 @@
 
                 async function makeApiCall(endpoint, method, data, description = '') {
                     try {
-                        if (SHOWDEBUG) {
+                        //if (SHOWDEBUG) {
                             addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
-                        }
+                        //}
                         
                         const response = await $.ajax({
                             url: endpoint,
@@ -225,17 +225,17 @@
                         });
                         
                         console.log(`${method} response:`, response);
-                        if (SHOWDEBUG) {
+                        //if (SHOWDEBUG) {
                             addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
-                        }
+                        //}
                         return response;
                     } catch (error) {
                         console.error(`${method} error:`, error);
                         const errorText = error.responseText || error.statusText || error.message || 'Unknown error';
                         const statusCode = error.status || 'Unknown';
-                        if (SHOWDEBUG) {
+                        //if (SHOWDEBUG) {
                             addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
-                        }
+                        //}
                         throw error;
                     }
                 }
@@ -321,9 +321,9 @@
                 function handleParticipantNotification(notification) {
                     addDebugLine(`🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
                     
-                    if (!isMonitoringParticipants) {
-                        addDebugLine('⏸️ Not monitoring participants - ignoring notification');
-                        return;
+                //    if (!isMonitoringParticipants) {
+                //        addDebugLine('⏸️ Not monitoring participants - ignoring notification');
+                //        return;
                     }
                     
                     addDebugLine(`📋 Notification details:`);
@@ -414,7 +414,7 @@
                     
                     sequenceRunning = true;
                     document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                    addDebugLine('🚀 38 Starting TSN Reset sequence...');
+                    addDebugLine('🚀 39 Starting TSN Reset sequence...');
 
                     try {
                         // Step 1: Try POST consult first, fallback to POST participants
