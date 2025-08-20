@@ -376,9 +376,9 @@
                         document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed - Agent off hold";
                         
                         // Clean up WebSocket after successful completion
-                        setTimeout(() => {
-                            cleanupWebSocket();
-                        }, 2000); // Wait 2 seconds before cleanup to see any final messages
+                        //setTimeout(() => {
+                        //    cleanupWebSocket();
+                        //}, 2000); // Wait 2 seconds before cleanup to see any final messages
                         
                     } catch (error) {
                         console.error("Error taking agent off hold:", error);
@@ -401,7 +401,7 @@
                 // Clean up on page unload
                 window.addEventListener('beforeunload', function() {
                     addDebugLine(`❌ EventListener cleanup Websocket Called`);
-                    cleanupWebSocket();
+                //    cleanupWebSocket();
                 });
 
                 // MAIN SEQUENCE FUNCTION - WebSocket setup AFTER agent is on hold
@@ -562,7 +562,7 @@
                         document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
                         
                         // Clean up on error
-                        cleanupWebSocket();
+                        // cleanupWebSocket();
                     } finally {
                         // Always reset the sequence running flag
                         sequenceRunning = false;
