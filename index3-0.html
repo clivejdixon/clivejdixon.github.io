@@ -190,6 +190,12 @@
                     addDebugLine(`📋 Conversation ID: ${conversationId}`);
                     addDebugLine(`👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
                     addDebugLine(`📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
+                    addDebugLine(`🔍 Page URL: ${window.location.href}`);
+                    addDebugLine(`🔍 Referrer: ${document.referrer}`);
+                } else {
+                    addDebugLine('⚠️ Application already initialized - this is a page reload!');
+                    addDebugLine(`🔍 Page URL: ${window.location.href}`);
+                    addDebugLine(`🔍 Referrer: ${document.referrer}`);
                 }
 
                 function sleep(ms) {
@@ -294,6 +300,16 @@
                         
                         if (websocket.readyState === WebSocket.OPEN) {
                             addDebugLine('🎯 WebSocket setup completed successfully');
+                            addDebugLine(`🔍 WebSocket ready state: ${websocket.readyState} (1=OPEN)`);
+                            
+                            // Send a test message to verify connection
+                            try {
+                                websocket.send(JSON.stringify({type: 'ping', timestamp: new Date().toISOString()}));
+                                addDebugLine('📤 Sent test ping message to WebSocket');
+                            } catch (error) {
+                                addDebugLine(`❌ Failed to send test ping: ${error.message}`);
+                            }
+                            
                             return true;
                         } else {
                             addDebugLine(`⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
@@ -390,9 +406,36 @@
                 }
 
                 // Monitor for page unload but don't cleanup WebSocket automatically
-                window.addEventListener('beforeunload', function() {
-                    addDebugLine(`⚠️ Page unload detected - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
+                window.addEventListener('beforeunload', function(event) {
+                    addDebugLine(`⚠️ Page unload detected - Reason: ${event.type} - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
                     // Don't cleanup WebSocket automatically - let it stay connected
+                });
+
+                // Add more event listeners to debug what's causing reloads
+                window.addEventListener('pagehide', function(event) {
+                    addDebugLine(`⚠️ Page hide detected - persisted: ${event.persisted}`);
+                });
+
+                window.addEventListener('pageshow', function(event) {
+                    addDebugLine(`⚠️ Page show detected - persisted: ${event.persisted}`);
+                });
+
+                // Prevent form submissions that might reload the page
+                document.addEventListener('submit', function(event) {
+                    addDebugLine(`⚠️ Form submission detected - preventing default`);
+                    event.preventDefault();
+                    return false;
+                });
+
+                // Check if we're in an iframe that might be reloading
+                if (window.parent !== window) {
+                    addDebugLine(`ℹ️ Running inside iframe - parent: ${window.parent.location.href}`);
+                }
+
+                // Add error handling for unhandled promise rejections
+                window.addEventListener('unhandledrejection', function(event) {
+                    addDebugLine(`❌ Unhandled promise rejection: ${event.reason}`);
+                    // Don't prevent default - just log
                 });
 
                 // MAIN SEQUENCE FUNCTION - WebSocket setup AFTER agent is on hold
@@ -405,7 +448,7 @@
                     
                     sequenceRunning = true;
                     document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                    addDebugLine('🚀 43 Starting TSN Reset sequence...');
+                    addDebugLine('🚀 44 Starting TSN Reset sequence...');
 
                     try {
                         // Step 1: Try POST consult first, fallback to POST participants
