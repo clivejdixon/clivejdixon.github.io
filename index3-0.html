@@ -1,574 +1,579 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Call Handler - Debug Enhanced</title>
-        <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-        <style>
-            .action-button {
-                background-color: black;
-                color: yellow;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 14px;
-                margin-top: 0px;
-            }
-            
-            .center {
-                text-align: center;
-            }
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Handler - Debug Enhanced</title>
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<style>
+.action-button {
+background-color: black;
+color: yellow;
+padding: 10px 20px;
+border: none;
+border-radius: 5px;
+cursor: pointer;
+font-size: 14px;
+margin-top: 0px;
+}
 
-           // #DebugOutput {
-           //     margin-top: 20px; 
-           //     padding: 10px; 
-           //     background-color: #f0f0f0; 
-           //     border: 1px solid #ccc; 
-           //     border-radius: 5px; 
-           //     font-family: monospace; 
-           //     font-size: 12px; 
-           //     text-align: left; 
-           //     white-space: pre-wrap; 
-           //     max-height: 400px; 
-           //     overflow-y: auto;
-           // }
+.center {
+text-align: center;
+}
 
-           // .websocket-status {
-           //     margin: 10px 0;
-           //     padding: 5px 10px;
-           //     border-radius: 3px;
-           //     font-weight: bold;
-           // }
+#DebugOutput {
+margin-top: 20px; 
+padding: 10px; 
+background-color: #f0f0f0; 
+border: 1px solid #ccc; 
+border-radius: 5px; 
+font-family: monospace; 
+font-size: 12px; 
+text-align: left; 
+white-space: pre-wrap; 
+max-height: 400px; 
+overflow-y: auto;
+}
 
-           // .status-connected { background-color: #d4edda; color: #155724; }
-           // .status-disconnected { background-color: #f8d7da; color: #721c24; }
-           // .status-monitoring { background-color: #d1ecf1; color: #0c5460; }
-        </style>
-    </head>
-    <body>
-        <div class="center">
-            <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
-            
-          //  <div id="websocket-status" class="websocket-status status-disconnected">WebSocket: Not Connected</div>
-            
-            <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
-            
-          //  <div id="DebugOutput" style="display: block;"></div>
-            
-            <table class="redTable">
-                <tbody id="tabla-container"></tbody>
-            </table>
-        </div>
-    
-        <script>
-            const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1';
-            const ENVIRONMENT = 'euw2.pure.cloud';
-            const REDIRECT_URI = 'https://clivejdixon.github.io/index3-0.html';
-            const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
-            const SPEAK_TO_INITIAL = 'BOTH';
-            const SPEAK_TO_FINAL = 'CONFERENCE';
+.websocket-status {
+margin: 10px 0;
+padding: 5px 10px;
+border-radius: 3px;
+font-weight: bold;
+}
+
+.status-connected { background-color: #d4edda; color: #155724; }
+.status-disconnected { background-color: #f8d7da; color: #721c24; }
+.status-monitoring { background-color: #d1ecf1; color: #0c5460; }
+</style>
+</head>
+<body>
+<div class="center">
+<button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
+
+<div id="websocket-status" class="websocket-status status-disconnected">WebSocket: Not Connected</div>
+
+<div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
+
+<div id="DebugOutput" style="display: block;"></div>
+
+<table class="redTable">
+<tbody id="tabla-container"></tbody>
+</table>
+</div>
+
+<script>
+const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1';
+const ENVIRONMENT = 'euw2.pure.cloud';
+const REDIRECT_URI = 'https://clivejdixon.github.io/index3-0.html';
+const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
+const SPEAK_TO_INITIAL = 'BOTH';
+const SPEAK_TO_FINAL = 'CONFERENCE';
+            const SHOWDEBUG = true;
             const SHOWDEBUG = false;
-            const WAITTIME = 1000;
+const WAITTIME = 1000;
 
-            // WebSocket variables
-            let websocket = null;
-            let notificationChannelId = null;
-            let isMonitoringParticipants = false;
-            let debugBuffer = [];
+// WebSocket variables
+let websocket = null;
+let notificationChannelId = null;
+let isMonitoringParticipants = false;
+let debugBuffer = [];
+            let maxDebugLines = 100;
             let maxDebugLines = 150;
-            let sequenceRunning = false;
+let sequenceRunning = false;
 
-            // Enhanced debug functions
-            function addDebugLine(message) {
-                if (SHOWDEBUG) {
-                    const timestamp = new Date().toLocaleTimeString();
-                    const line = `[${timestamp}] ${message}`;
-                    
-                    // Add to buffer
-                    debugBuffer.push(line);
-                    if (debugBuffer.length > maxDebugLines) {
-                        debugBuffer.shift();
-                    }
-                    
-                    // Update display
-                //    const debugOutput = document.getElementById("DebugOutput");
-                //    if (debugOutput) {
-                //        debugOutput.textContent = debugBuffer.join('\n') + '\n';
-                //        debugOutput.scrollTop = debugOutput.scrollHeight;
-                //    }
-                    
-                }
+// Enhanced debug functions
+function addDebugLine(message) {
+if (SHOWDEBUG) {
+const timestamp = new Date().toLocaleTimeString();
+const line = `[${timestamp}] ${message}`;
+
+// Add to buffer
+debugBuffer.push(line);
+if (debugBuffer.length > maxDebugLines) {
+debugBuffer.shift();
+}
+
+// Update display
+const debugOutput = document.getElementById("DebugOutput");
+if (debugOutput) {
+debugOutput.textContent = debugBuffer.join('\n') + '\n';
+debugOutput.scrollTop = debugOutput.scrollHeight;
+}
+
+                    // Also log to console for backup
+                    console.log(`[DEBUG] ${message}`);
+}
                 // Also log to console for backup
                 console.log(`[DEBUG] ${message}`);
-            }
+}
 
-            function updateWebSocketStatus(status, className) {
-                const statusElement = document.getElementById("websocket-status");
-                if (statusElement) {
-                    statusElement.textContent = `WebSocket: ${status}`;
-                    statusElement.className = `websocket-status ${className}`;
-                }
-            }
+function updateWebSocketStatus(status, className) {
+const statusElement = document.getElementById("websocket-status");
+if (statusElement) {
+statusElement.textContent = `WebSocket: ${status}`;
+statusElement.className = `websocket-status ${className}`;
+}
+}
 
-            function getTokenAndStateFromHash() {
-                const hash = window.location.hash.substring(1);
-                const params = new URLSearchParams(hash);
-                const token = params.get('access_token');
-                const state = params.get('state');
-                console.log("Received state:", state);
-                let conversationId = null;
-                let agentParticipantId = null;
-                let customerParticipantId = null;
-                let consultingUserId = null;
+function getTokenAndStateFromHash() {
+const hash = window.location.hash.substring(1);
+const params = new URLSearchParams(hash);
+const token = params.get('access_token');
+const state = params.get('state');
+console.log("Received state:", state);
+let conversationId = null;
+let agentParticipantId = null;
+let customerParticipantId = null;
+let consultingUserId = null;
 
-                if (state) {
-                    try {
-                        const decodedState = decodeURIComponent(state);
-                        const parsed = JSON.parse(atob(decodedState));
-                        conversationId = parsed.conversationId;
-                        agentParticipantId = parsed.agentParticipantId;
-                        customerParticipantId = parsed.customerParticipantId;
-                        consultingUserId = parsed.consultingUserId;
-                        console.log("Parsed from state:", parsed);
-                    } catch (e) {
-                        console.error("Error decoding state:", e);
-                    }
-                }
+if (state) {
+try {
+const decodedState = decodeURIComponent(state);
+const parsed = JSON.parse(atob(decodedState));
+conversationId = parsed.conversationId;
+agentParticipantId = parsed.agentParticipantId;
+customerParticipantId = parsed.customerParticipantId;
+consultingUserId = parsed.consultingUserId;
+console.log("Parsed from state:", parsed);
+} catch (e) {
+console.error("Error decoding state:", e);
+}
+}
 
-                return { token, conversationId, agentParticipantId, customerParticipantId, consultingUserId };
-            }
+return { token, conversationId, agentParticipantId, customerParticipantId, consultingUserId };
+}
 
-            function getParametersFromUrl() {
-                const urlParams = new URLSearchParams(window.location.search);
-                return {
-                    conversationId: urlParams.get('conversationId'),
-                    agentParticipantId: urlParams.get('agentParticipantId'),
-                    customerParticipantId: urlParams.get('customerParticipantId'),
-                    consultingUserId: urlParams.get('consultingUserId')
-                };
-            }
+function getParametersFromUrl() {
+const urlParams = new URLSearchParams(window.location.search);
+return {
+conversationId: urlParams.get('conversationId'),
+agentParticipantId: urlParams.get('agentParticipantId'),
+customerParticipantId: urlParams.get('customerParticipantId'),
+consultingUserId: urlParams.get('consultingUserId')
+};
+}
 
-            // First try to get parameters from OAuth callback (hash)
-            let { token: gToken, conversationId, agentParticipantId, customerParticipantId, consultingUserId } = getTokenAndStateFromHash();
+// First try to get parameters from OAuth callback (hash)
+let { token: gToken, conversationId, agentParticipantId, customerParticipantId, consultingUserId } = getTokenAndStateFromHash();
 
-            // If no token, we need to start OAuth flow
-            if (!gToken) {
-                // Get parameters from URL
-                const urlParams = getParametersFromUrl();
-                
-                if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
-                    alert("Missing parameters in the URL. Cannot continue.");
-                    throw new Error("Missing parameters in the URL");
-                }
+// If no token, we need to start OAuth flow
+if (!gToken) {
+// Get parameters from URL
+const urlParams = getParametersFromUrl();
 
-                // Store parameters in state for OAuth flow
-                const state = btoa(JSON.stringify({
-                    conversationId: urlParams.conversationId,
-                    agentParticipantId: urlParams.agentParticipantId,
-                    customerParticipantId: urlParams.customerParticipantId,
-                    consultingUserId: urlParams.consultingUserId                
-                }));
-                console.log("Redirecting with state:", state);
+if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
+alert("Missing parameters in the URL. Cannot continue.");
+throw new Error("Missing parameters in the URL");
+}
 
-                const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
-                    $.param({
-                        response_type: 'token',
-                        client_id: CLIENT_ID,
-                        redirect_uri: REDIRECT_URI,
-                        state: state
-                    });
-                window.location.replace(authUrl);
-            } else {
-                // We have a token, parameters should be in the state
-                if (!conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
-                    alert("Missing parameters in OAuth callback. Cannot continue.");
-                    throw new Error("Missing parameters in OAuth callback");
-                }
+// Store parameters in state for OAuth flow
+const state = btoa(JSON.stringify({
+conversationId: urlParams.conversationId,
+agentParticipantId: urlParams.agentParticipantId,
+customerParticipantId: urlParams.customerParticipantId,
+consultingUserId: urlParams.consultingUserId                
+}));
+console.log("Redirecting with state:", state);
 
-                console.log("Token obtained:", gToken);
-                console.log("conversationId:", conversationId);
-                console.log("agentParticipantId:", agentParticipantId);
-                console.log("customerParticipantId:", customerParticipantId);
-                console.log("consultingUserId:", consultingUserId);            
+const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
+$.param({
+response_type: 'token',
+client_id: CLIENT_ID,
+redirect_uri: REDIRECT_URI,
+state: state
+});
+window.location.replace(authUrl);
+} else {
+// We have a token, parameters should be in the state
+if (!conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
+alert("Missing parameters in OAuth callback. Cannot continue.");
+throw new Error("Missing parameters in OAuth callback");
+}
 
-                const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
+console.log("Token obtained:", gToken);
+console.log("conversationId:", conversationId);
+console.log("agentParticipantId:", agentParticipantId);
+console.log("customerParticipantId:", customerParticipantId);
+console.log("consultingUserId:", consultingUserId);            
 
-                // Initialize debug display - ONLY ONCE
-                if (!window.debugInitialized) {
-                    window.debugInitialized = true;
-                    addDebugLine('🚀 Application initialized');
-                    addDebugLine(`📋 Conversation ID: ${conversationId}`);
-                    addDebugLine(`👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
-                    addDebugLine(`📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
-                }
+const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
 
-                function sleep(ms) {
-                    return new Promise(resolve => setTimeout(resolve, ms));
-                }
+// Initialize debug display - ONLY ONCE
+if (!window.debugInitialized) {
+window.debugInitialized = true;
+addDebugLine('🚀 Application initialized');
+addDebugLine(`📋 Conversation ID: ${conversationId}`);
+addDebugLine(`👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
+addDebugLine(`📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
+}
 
-                async function makeApiCall(endpoint, method, data, description = '') {
-                    try {
-                        //if (SHOWDEBUG) {
-                            addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
-                        //}
-                        
-                        const response = await $.ajax({
-                            url: endpoint,
-                            type: method,
-                            beforeSend: function(xhr) {
-                                xhr.setRequestHeader('Authorization', 'Bearer ' + gToken);
-                            },
-                            data: JSON.stringify(data),
-                            contentType: 'application/json'
-                        });
-                        
-                        console.log(`${method} response:`, response);
-                        //if (SHOWDEBUG) {
-                            addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
-                        //}
-                        return response;
-                    } catch (error) {
-                        console.error(`${method} error:`, error);
-                        const errorText = error.responseText || error.statusText || error.message || 'Unknown error';
-                        const statusCode = error.status || 'Unknown';
-                        //if (SHOWDEBUG) {
-                            addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
-                        //}
-                        throw error;
-                    }
-                }
+function sleep(ms) {
+return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-                // Enhanced WebSocket notification functions
-                async function setupWebSocketNotifications() {
-                    try {
-                        addDebugLine('🔌 Setting up WebSocket notifications...');
-                        
-                        // Step 1: Create notification channel
-                        const channelResponse = await makeApiCall(
-                            `https://api.${ENVIRONMENT}/api/v2/notifications/channels`,
-                            'POST',
-                            {},
-                            'Creating notification channel'
-                        );
-                        
-                        notificationChannelId = channelResponse.id;
-                        const websocketUri = channelResponse.connectUri;
-                        addDebugLine(`📡 Channel created: ${notificationChannelId}`);
-                        addDebugLine(`🔗 WebSocket URI: ${websocketUri}`);
-                        
-                        // Step 2: Subscribe to conversation events - ORIGINAL SUBSCRIPTION
-                        const subscriptionResponse = await makeApiCall(
-                            `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
-                            'POST',
-                            [{
-                                id: `v2.detail.events.conversation.${conversationId}.customer.end`
-                            }],
-                            'Subscribing to customer disconnect notifications'
-                        );
-                        
-                        addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.customer.end`);
-                        
-                        // Step 3: Connect WebSocket
-                        websocket = new WebSocket(websocketUri);
-                        
-                        websocket.onopen = function() {
-                            addDebugLine('✅ WebSocket connected successfully');
-                            updateWebSocketStatus('Connected', 'status-connected');
-                        };
-                        
-                        websocket.onmessage = function(event) {
-                            try {
-                                const notification = JSON.parse(event.data);
-                                addDebugLine(`📨 WebSocket message received: ${JSON.stringify(notification, null, 2)}`);
-                                handleParticipantNotification(notification);
-                            } catch (error) {
-                                addDebugLine(`❌ Error parsing WebSocket message: ${error.message}`);
-                            }
-                        };
-                        
-                        websocket.onerror = function(error) {
-                            console.error('WebSocket error:', error);
-                            addDebugLine(`❌ WebSocket error: ${JSON.stringify(error)}`);
-                            updateWebSocketStatus('Error', 'status-disconnected');
-                        };
-                        
-                        websocket.onclose = function(event) {
-                            addDebugLine(`🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
-                            updateWebSocketStatus('Disconnected', 'status-disconnected');
-                        };
-                        
-                        // Wait a bit for connection to establish
-                        await sleep(2000);
-                        
-                        if (websocket.readyState === WebSocket.OPEN) {
-                            addDebugLine('🎯 WebSocket setup completed successfully');
-                            return true;
-                        } else {
-                            addDebugLine(`⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
-                            return false;
-                        }
-                        
-                    } catch (error) {
-                        console.error('Failed to setup WebSocket notifications:', error);
-                        addDebugLine(`❌ WebSocket setup failed: ${error.message || error.responseText || 'Unknown error'}`);
-                        updateWebSocketStatus('Setup Failed', 'status-disconnected');
-                        return false;
-                    }
-                }
+async function makeApiCall(endpoint, method, data, description = '') {
+try {
+if (SHOWDEBUG) {
+addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
+}
 
-                function handleParticipantNotification(notification) {
-                    addDebugLine(`🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
-                    
-                //    if (!isMonitoringParticipants) {
-                //        addDebugLine('⏸️ Not monitoring participants - ignoring notification');
-                //        return;
-                    }
-                    
-                    addDebugLine(`📋 Notification details:`);
-                    addDebugLine(`   Topic: ${notification.topicName}`);
-                    addDebugLine(`   Event Body: ${JSON.stringify(notification.eventBody, null, 2)}`);
-                    
-                    // Check if this is a customer end event
-                    if (notification.topicName && 
-                        notification.topicName.includes('customer.end') && 
-                        notification.eventBody) {
-                        
-                        const eventBody = notification.eventBody;
-                        
-                        addDebugLine(`🎯 Customer disconnect event detected:`);
-                        addDebugLine(`   Disconnect Type: ${eventBody.disconnectType}`);
-                        addDebugLine(`   Participant ID: ${eventBody.participantId}`);
-                        addDebugLine(`   Purpose: ${eventBody.purpose}`);
-                        addDebugLine(`   Duration: ${eventBody.interactingDurationMs}ms`);
-                        
-                        // Check if this is an ENDPOINT disconnect (customer hanging up)
-                        if (eventBody.disconnectType === 'ENDPOINT') {
-                            addDebugLine('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
-                            
-                            // Stop monitoring to prevent multiple triggers
-                            isMonitoringParticipants = false;
-                            updateWebSocketStatus('Processing Disconnect', 'status-monitoring');
-                            
-                            // Take agent off hold
-                            takeAgentOffHold();
-                        } else {
-                            addDebugLine(`ℹ️ Customer disconnected but not ENDPOINT type: ${eventBody.disconnectType}`);
-                        }
-                    } else {
-                        addDebugLine('ℹ️ Notification not a customer end event');
-                    }
-                }
+const response = await $.ajax({
+url: endpoint,
+type: method,
+beforeSend: function(xhr) {
+xhr.setRequestHeader('Authorization', 'Bearer ' + gToken);
+},
+data: JSON.stringify(data),
+contentType: 'application/json'
+});
 
-                async function takeAgentOffHold() {
-                    try {
-                        await makeApiCall(
-                            `${BASE_API_URL}/participants/${agentParticipantId}`,
-                            'PATCH',
-                            {
-                                held: false
-                            },
-                            'FINAL STEP: Taking agent off hold'
-                        );
-                        
-                        addDebugLine('🎉 Agent taken off hold - TSN Reset sequence complete!');
-                        document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed - Agent off hold";
-                        
-                        // Clean up WebSocket after successful completion
-                        //setTimeout(() => {
-                        //    cleanupWebSocket();
-                        //}, 2000); // Wait 2 seconds before cleanup to see any final messages
-                        
-                    } catch (error) {
-                        console.error("Error taking agent off hold:", error);
-                        addDebugLine(`❌ Error taking agent off hold: ${error.responseText || error.message}`);
-                        document.getElementById("ConfirmationMessage").textContent = "❌ Error taking agent off hold";
-                    }
-                }
+console.log(`${method} response:`, response);
+if (SHOWDEBUG) {
+addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
+}
+return response;
+} catch (error) {
+console.error(`${method} error:`, error);
+const errorText = error.responseText || error.statusText || error.message || 'Unknown error';
+const statusCode = error.status || 'Unknown';
+if (SHOWDEBUG) {
+addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
+}
+throw error;
+}
+}
 
-                function cleanupWebSocket() {
-                    if (websocket) {
-                        websocket.close();
-                        websocket = null;
-                        addDebugLine('🧹 WebSocket cleaned up');
-                        updateWebSocketStatus('Cleaned Up', 'status-disconnected');
-                    }
-                    isMonitoringParticipants = false;
-                    sequenceRunning = false;
-                }
+// Enhanced WebSocket notification functions
+async function setupWebSocketNotifications() {
+try {
+addDebugLine('🔌 Setting up WebSocket notifications...');
 
-                // Clean up on page unload
-                window.addEventListener('beforeunload', function() {
-                    addDebugLine(`❌ EventListener cleanup Websocket Called`);
-                //    cleanupWebSocket();
-                });
+// Step 1: Create notification channel
+const channelResponse = await makeApiCall(
+`https://api.${ENVIRONMENT}/api/v2/notifications/channels`,
+'POST',
+{},
+'Creating notification channel'
+);
 
-                // MAIN SEQUENCE FUNCTION - WebSocket setup AFTER agent is on hold
-                window.startSequence = async function() {
-                    // Prevent multiple sequence executions
-                    if (sequenceRunning) {
-                        addDebugLine('⚠️ Sequence already running, ignoring request');
-                        return;
-                    }
-                    
-                    sequenceRunning = true;
-                    document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                    addDebugLine('🚀 40 Starting TSN Reset sequence...');
+notificationChannelId = channelResponse.id;
+const websocketUri = channelResponse.connectUri;
+addDebugLine(`📡 Channel created: ${notificationChannelId}`);
+addDebugLine(`🔗 WebSocket URI: ${websocketUri}`);
 
-                    try {
-                        // Step 1: Try POST consult first, fallback to POST participants
-                        let step1Success = false;
-                        try {
-                            // Step 1a: POST consult
-                            await makeApiCall(
-                                `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
-                                'POST',
-                                {
-                                    speakTo: SPEAK_TO_INITIAL,
-                                    destination: {
-                                        queueId: QUEUE_ID
-                                    },
-                                    consultingUserId: consultingUserId
-                                },
-                                'STEP 1a: Creating consultation'
-                            );
-                            step1Success = true;
-                        } catch (error) {
-                            addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
-                            
-                            try {
-                                // Step 1b: POST participants (fallback)
-                                await makeApiCall(
-                                    `${BASE_API_URL}/participants`,
-                                    'POST',
-                                    {
-                                        "participants": [{"queueId": QUEUE_ID}]
-                                    },
-                                    'STEP 1b: Adding queue to conference (fallback)'
-                                );
-                                step1Success = true;
-                                addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
-                                
-                                // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
-                                addDebugLine('⏳ Waiting 1 second before final step...');
-                                await sleep(WAITTIME);
-                                
-                                // Step 3: PATCH participant held
-                                await makeApiCall(
-                                    `${BASE_API_URL}/participants/${agentParticipantId}`,
-                                    'PATCH',
-                                    {
-                                        held: true
-                                    },
-                                    'STEP 3: Placing agent on hold'
-                                );
+// Step 2: Subscribe to conversation events - ORIGINAL SUBSCRIPTION
+const subscriptionResponse = await makeApiCall(
+`https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
+'POST',
+[{
+id: `v2.detail.events.conversation.${conversationId}.customer.end`
+}],
+'Subscribing to customer disconnect notifications'
+);
 
-                                // NOW setup WebSocket notifications AFTER agent is on hold
-                                addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
-                                const websocketSetupSuccess = await setupWebSocketNotifications();
+addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.customer.end`);
 
-                                // Start monitoring for participant changes (only if WebSocket is working)
-                                if (websocketSetupSuccess) {
-                                    isMonitoringParticipants = true;
-                                    updateWebSocketStatus('Monitoring Active', 'status-monitoring');
-                                    addDebugLine('👁️ Now monitoring for customer disconnections...');
-                                    document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
-                                } else {
-                                    addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
-                                    document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
-                                }
-                                
-                                return; // Exit early since we've completed the sequence
-                            } catch (fallbackError) {
-                                addDebugLine(`❌ Both Step 1a and 1b failed`);
-                                throw fallbackError; // Re-throw to trigger main error handling
-                            }
-                        }
+// Step 3: Connect WebSocket
+websocket = new WebSocket(websocketUri);
 
-                        // Wait time pause
-                        addDebugLine('⏳ Waiting 1 second...');
-                        await sleep(WAITTIME);
+websocket.onopen = function() {
+addDebugLine('✅ WebSocket connected successfully');
+updateWebSocketStatus('Connected', 'status-connected');
+};
 
-                        // Step 2: Try PATCH consult first, fallback to POST participants
-                        let step2Success = false;
-                        try {
-                            // Step 2a: PATCH consult
-                            await makeApiCall(
-                                `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
-                                'PATCH',
-                                {
-                                    speakTo: SPEAK_TO_FINAL,
-                                    consultingUserId: consultingUserId
-                                },
-                                'STEP 2a: Updating consultation speak mode'
-                            );
-                            step2Success = true;
-                        } catch (error) {
-                            addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
-                            
-                            try {
-                                // Step 2b: POST participants (fallback)
-                                await makeApiCall(
-                                    `${BASE_API_URL}/participants`,
-                                    'POST',
-                                    {
-                                        "participants": [{"queueId": QUEUE_ID}]
-                                    },
-                                    'STEP 2b: Adding queue to conference (fallback)'
-                                );
-                                step2Success = true;
-                                addDebugLine('✅ Step 2b fallback succeeded');
-                            } catch (fallbackError) {
-                                addDebugLine(`❌ Both Step 2a and 2b failed`);
-                                throw fallbackError; // Re-throw to trigger main error handling
-                            }
-                        }
+websocket.onmessage = function(event) {
+try {
+const notification = JSON.parse(event.data);
+addDebugLine(`📨 WebSocket message received: ${JSON.stringify(notification, null, 2)}`);
+handleParticipantNotification(notification);
+} catch (error) {
+addDebugLine(`❌ Error parsing WebSocket message: ${error.message}`);
+}
+};
 
-                        // Wait time pause
-                        addDebugLine('⏳ Waiting 1 second...');
-                        await sleep(WAITTIME);
+websocket.onerror = function(error) {
+console.error('WebSocket error:', error);
+addDebugLine(`❌ WebSocket error: ${JSON.stringify(error)}`);
+updateWebSocketStatus('Error', 'status-disconnected');
+};
 
-                        // Step 3: PATCH participant held
-                        await makeApiCall(
-                            `${BASE_API_URL}/participants/${agentParticipantId}`,
-                            'PATCH',
-                            {
-                                held: true
-                            },
-                            'STEP 3: Placing agent on hold'
-                        );
+websocket.onclose = function(event) {
+addDebugLine(`🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
+updateWebSocketStatus('Disconnected', 'status-disconnected');
+};
 
-                        // NOW setup WebSocket notifications AFTER agent is on hold
-                        addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
-                        const websocketSetupSuccess = await setupWebSocketNotifications();
+// Wait a bit for connection to establish
+await sleep(2000);
 
-                        // Start monitoring for participant changes (only if WebSocket is working)
-                        if (websocketSetupSuccess) {
-                            isMonitoringParticipants = true;
-                            updateWebSocketStatus('Monitoring Active', 'status-monitoring');
-                            addDebugLine('👁️ Now monitoring for customer disconnections...');
-                            addDebugLine('🎉 Initial sequence completed successfully!');
-                            document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
-                        } else {
-                            addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
-                            addDebugLine('🎉 Initial sequence completed successfully!');
-                            document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
-                        }
-                        
-                    } catch (error) {
-                        console.error("Sequence error:", error);
-                        addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                        document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
-                        
-                        // Clean up on error
-                        // cleanupWebSocket();
-                    } finally {
-                        // Always reset the sequence running flag
-                        sequenceRunning = false;
-                    }
-                };
-            }
-        </script>
-    </body>
+if (websocket.readyState === WebSocket.OPEN) {
+addDebugLine('🎯 WebSocket setup completed successfully');
+return true;
+} else {
+addDebugLine(`⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
+return false;
+}
+
+} catch (error) {
+console.error('Failed to setup WebSocket notifications:', error);
+addDebugLine(`❌ WebSocket setup failed: ${error.message || error.responseText || 'Unknown error'}`);
+updateWebSocketStatus('Setup Failed', 'status-disconnected');
+return false;
+}
+}
+
+function handleParticipantNotification(notification) {
+addDebugLine(`🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
+
+if (!isMonitoringParticipants) {
+addDebugLine('⏸️ Not monitoring participants - ignoring notification');
+return;
+}
+
+addDebugLine(`📋 Notification details:`);
+addDebugLine(`   Topic: ${notification.topicName}`);
+addDebugLine(`   Event Body: ${JSON.stringify(notification.eventBody, null, 2)}`);
+
+// Check if this is a customer end event
+if (notification.topicName && 
+notification.topicName.includes('customer.end') && 
+notification.eventBody) {
+
+const eventBody = notification.eventBody;
+
+addDebugLine(`🎯 Customer disconnect event detected:`);
+addDebugLine(`   Disconnect Type: ${eventBody.disconnectType}`);
+addDebugLine(`   Participant ID: ${eventBody.participantId}`);
+addDebugLine(`   Purpose: ${eventBody.purpose}`);
+addDebugLine(`   Duration: ${eventBody.interactingDurationMs}ms`);
+
+// Check if this is an ENDPOINT disconnect (customer hanging up)
+if (eventBody.disconnectType === 'ENDPOINT') {
+addDebugLine('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
+
+// Stop monitoring to prevent multiple triggers
+isMonitoringParticipants = false;
+updateWebSocketStatus('Processing Disconnect', 'status-monitoring');
+
+// Take agent off hold
+takeAgentOffHold();
+} else {
+addDebugLine(`ℹ️ Customer disconnected but not ENDPOINT type: ${eventBody.disconnectType}`);
+}
+} else {
+addDebugLine('ℹ️ Notification not a customer end event');
+}
+}
+
+async function takeAgentOffHold() {
+try {
+await makeApiCall(
+`${BASE_API_URL}/participants/${agentParticipantId}`,
+'PATCH',
+{
+held: false
+},
+'FINAL STEP: Taking agent off hold'
+);
+
+addDebugLine('🎉 Agent taken off hold - TSN Reset sequence complete!');
+document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed - Agent off hold";
+
+// Clean up WebSocket after successful completion
+//setTimeout(() => {
+//    cleanupWebSocket();
+//}, 2000); // Wait 2 seconds before cleanup to see any final messages
+
+} catch (error) {
+console.error("Error taking agent off hold:", error);
+addDebugLine(`❌ Error taking agent off hold: ${error.responseText || error.message}`);
+document.getElementById("ConfirmationMessage").textContent = "❌ Error taking agent off hold";
+}
+}
+
+function cleanupWebSocket() {
+if (websocket) {
+websocket.close();
+websocket = null;
+addDebugLine('🧹 WebSocket cleaned up');
+updateWebSocketStatus('Cleaned Up', 'status-disconnected');
+}
+isMonitoringParticipants = false;
+sequenceRunning = false;
+}
+
+// Clean up on page unload
+window.addEventListener('beforeunload', function() {
+addDebugLine(`❌ EventListener cleanup Websocket Called`);
+//    cleanupWebSocket();
+});
+
+// MAIN SEQUENCE FUNCTION - WebSocket setup AFTER agent is on hold
+window.startSequence = async function() {
+// Prevent multiple sequence executions
+if (sequenceRunning) {
+addDebugLine('⚠️ Sequence already running, ignoring request');
+return;
+}
+
+sequenceRunning = true;
+document.getElementById("ConfirmationMessage").textContent = "Processing...";
+                    addDebugLine('🚀 37 Starting TSN Reset sequence ...');
+                    addDebugLine('🚀 38 Starting TSN Reset sequence...');
+
+try {
+// Step 1: Try POST consult first, fallback to POST participants
+let step1Success = false;
+try {
+// Step 1a: POST consult
+await makeApiCall(
+`${BASE_API_URL}/participants/${customerParticipantId}/consult`,
+'POST',
+{
+speakTo: SPEAK_TO_INITIAL,
+destination: {
+queueId: QUEUE_ID
+},
+consultingUserId: consultingUserId
+},
+'STEP 1a: Creating consultation'
+);
+step1Success = true;
+} catch (error) {
+addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
+
+try {
+// Step 1b: POST participants (fallback)
+await makeApiCall(
+`${BASE_API_URL}/participants`,
+'POST',
+{
+"participants": [{"queueId": QUEUE_ID}]
+},
+'STEP 1b: Adding queue to conference (fallback)'
+);
+step1Success = true;
+addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
+
+// Skip Steps 2 and go directly to Step 3 since we're already in conference mode
+addDebugLine('⏳ Waiting 1 second before final step...');
+await sleep(WAITTIME);
+
+// Step 3: PATCH participant held
+await makeApiCall(
+`${BASE_API_URL}/participants/${agentParticipantId}`,
+'PATCH',
+{
+held: true
+},
+'STEP 3: Placing agent on hold'
+);
+
+// NOW setup WebSocket notifications AFTER agent is on hold
+addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
+const websocketSetupSuccess = await setupWebSocketNotifications();
+
+// Start monitoring for participant changes (only if WebSocket is working)
+if (websocketSetupSuccess) {
+isMonitoringParticipants = true;
+updateWebSocketStatus('Monitoring Active', 'status-monitoring');
+addDebugLine('👁️ Now monitoring for customer disconnections...');
+document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+} else {
+addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
+document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
+}
+
+return; // Exit early since we've completed the sequence
+} catch (fallbackError) {
+addDebugLine(`❌ Both Step 1a and 1b failed`);
+throw fallbackError; // Re-throw to trigger main error handling
+}
+}
+
+// Wait time pause
+addDebugLine('⏳ Waiting 1 second...');
+await sleep(WAITTIME);
+
+// Step 2: Try PATCH consult first, fallback to POST participants
+let step2Success = false;
+try {
+// Step 2a: PATCH consult
+await makeApiCall(
+`${BASE_API_URL}/participants/${customerParticipantId}/consult`,
+'PATCH',
+{
+speakTo: SPEAK_TO_FINAL,
+consultingUserId: consultingUserId
+},
+'STEP 2a: Updating consultation speak mode'
+);
+step2Success = true;
+} catch (error) {
+addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
+
+try {
+// Step 2b: POST participants (fallback)
+await makeApiCall(
+`${BASE_API_URL}/participants`,
+'POST',
+{
+"participants": [{"queueId": QUEUE_ID}]
+},
+'STEP 2b: Adding queue to conference (fallback)'
+);
+step2Success = true;
+addDebugLine('✅ Step 2b fallback succeeded');
+} catch (fallbackError) {
+addDebugLine(`❌ Both Step 2a and 2b failed`);
+throw fallbackError; // Re-throw to trigger main error handling
+}
+}
+
+// Wait time pause
+addDebugLine('⏳ Waiting 1 second...');
+await sleep(WAITTIME);
+
+// Step 3: PATCH participant held
+await makeApiCall(
+`${BASE_API_URL}/participants/${agentParticipantId}`,
+'PATCH',
+{
+held: true
+},
+'STEP 3: Placing agent on hold'
+);
+
+// NOW setup WebSocket notifications AFTER agent is on hold
+addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
+const websocketSetupSuccess = await setupWebSocketNotifications();
+
+// Start monitoring for participant changes (only if WebSocket is working)
+if (websocketSetupSuccess) {
+isMonitoringParticipants = true;
+updateWebSocketStatus('Monitoring Active', 'status-monitoring');
+addDebugLine('👁️ Now monitoring for customer disconnections...');
+addDebugLine('🎉 Initial sequence completed successfully!');
+document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+} else {
+addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
+addDebugLine('🎉 Initial sequence completed successfully!');
+document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
+}
+
+} catch (error) {
+console.error("Sequence error:", error);
+addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
+document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
+
+// Clean up on error
+// cleanupWebSocket();
+} finally {
+// Always reset the sequence running flag
+sequenceRunning = false;
+}
+};
+}
+</script>
+</body>
 </html>
