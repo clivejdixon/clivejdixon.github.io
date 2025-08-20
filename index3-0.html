@@ -21,8 +21,6 @@
                 text-align: center;
             }
 
-
-
             #DebugOutput {
                 margin-top: 20px; 
                 padding: 10px; 
@@ -65,22 +63,22 @@
         </div>
     
         <script>
-            const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1'; // Client ID to change in each Org
+            const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1';
             const ENVIRONMENT = 'euw2.pure.cloud';
             const REDIRECT_URI = 'https://clivejdixon.github.io/index3-0.html';
-            const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb'; // Queue ID for Wholesale_Global_EN_ResetTSN_Q to change in each Org
+            const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
-            const SHOWDEBUG = true; // Set to false to hide debug information
+            const SHOWDEBUG = true;
             const WAITTIME = 1000;
 
             // WebSocket variables
             let websocket = null;
             let notificationChannelId = null;
             let isMonitoringParticipants = false;
-            let debugBuffer = []; // Keep a persistent debug buffer
-            let maxDebugLines = 100; // Limit buffer size
-            let sequenceRunning = false; // Prevent multiple executions
+            let debugBuffer = [];
+            let maxDebugLines = 100;
+            let sequenceRunning = false;
 
             // Enhanced debug functions
             function addDebugLine(message) {
@@ -397,7 +395,7 @@
                         updateWebSocketStatus('Cleaned Up', 'status-disconnected');
                     }
                     isMonitoringParticipants = false;
-                    sequenceRunning = false; // Also reset sequence flag on cleanup
+                    sequenceRunning = false;
                 }
 
                 // Clean up on page unload
@@ -405,6 +403,7 @@
                     cleanupWebSocket();
                 });
 
+                // MAIN SEQUENCE FUNCTION - WebSocket setup AFTER agent is on hold
                 window.startSequence = async function() {
                     // Prevent multiple sequence executions
                     if (sequenceRunning) {
@@ -417,7 +416,6 @@
                     addDebugLine('🚀 Starting TSN Reset sequence...');
 
                     try {
-                        
                         // Step 1: Try POST consult first, fallback to POST participants
                         let step1Success = false;
                         try {
