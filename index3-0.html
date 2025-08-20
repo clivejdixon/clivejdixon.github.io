@@ -240,8 +240,8 @@
                     if (!isMonitoringParticipants) return;
                     
                     // Check if this is a customer disconnect event
-                    if (notification.topicName && 
-                        notification.topicName.includes('customer.end') && 
+                    if (notification.id && 
+                        notification.id.includes('customer.end') && 
                         notification.eventBody) {
                         
                         const eventBody = notification.eventBody;
