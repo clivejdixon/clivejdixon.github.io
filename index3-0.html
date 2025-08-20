@@ -400,6 +400,7 @@
 
                 // Clean up on page unload
                 window.addEventListener('beforeunload', function() {
+                    addDebugLine(`❌ EventListener cleanup Websocket Called`);
                     cleanupWebSocket();
                 });
 
