@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Call Handler</title>
+        <title>Call Handler - Debug Enhanced</title>
         <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
         <style>
             .action-button {
@@ -20,13 +20,63 @@
             .center {
                 text-align: center;
             }
+
+            .debug-controls {
+                margin: 10px 0;
+            }
+
+            .debug-controls button {
+                margin: 0 5px;
+                padding: 5px 10px;
+                background-color: #666;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                cursor: pointer;
+            }
+
+            #DebugOutput {
+                margin-top: 20px; 
+                padding: 10px; 
+                background-color: #f0f0f0; 
+                border: 1px solid #ccc; 
+                border-radius: 5px; 
+                font-family: monospace; 
+                font-size: 12px; 
+                text-align: left; 
+                white-space: pre-wrap; 
+                max-height: 400px; 
+                overflow-y: auto;
+            }
+
+            .websocket-status {
+                margin: 10px 0;
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-weight: bold;
+            }
+
+            .status-connected { background-color: #d4edda; color: #155724; }
+            .status-disconnected { background-color: #f8d7da; color: #721c24; }
+            .status-monitoring { background-color: #d1ecf1; color: #0c5460; }
         </style>
     </head>
     <body>
         <div class="center">
             <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
+            
+            <div class="debug-controls">
+                <button onclick="clearDebugOutput()">Clear Debug</button>
+                <button onclick="toggleDebugOutput()">Show/Hide Debug</button>
+                <button onclick="testWebSocketConnection()">Test WebSocket</button>
+            </div>
+
+            <div id="websocket-status" class="websocket-status status-disconnected">WebSocket: Not Connected</div>
+            
             <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
-            <div id="DebugOutput" style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 5px; font-family: monospace; font-size: 12px; text-align: left; white-space: pre-wrap; max-height: 400px; overflow-y: auto; display: none;"></div>
+            
+            <div id="DebugOutput" style="display: block;"></div>
+            
             <table class="redTable">
                 <tbody id="tabla-container"></tbody>
             </table>
@@ -46,6 +96,60 @@
             let websocket = null;
             let notificationChannelId = null;
             let isMonitoringParticipants = false;
+            let debugBuffer = []; // Keep a persistent debug buffer
+            let maxDebugLines = 100; // Limit buffer size
+
+            // Enhanced debug functions
+            function clearDebugOutput() {
+                const debugOutput = document.getElementById("DebugOutput");
+                debugOutput.textContent = '';
+                debugBuffer = [];
+                addDebugLine('🧹 Debug output cleared');
+            }
+
+            function toggleDebugOutput() {
+                const debugOutput = document.getElementById("DebugOutput");
+                debugOutput.style.display = debugOutput.style.display === 'none' ? 'block' : 'none';
+            }
+
+            function addDebugLine(message) {
+                if (SHOWDEBUG) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    const line = `[${timestamp}] ${message}`;
+                    
+                    // Add to buffer
+                    debugBuffer.push(line);
+                    if (debugBuffer.length > maxDebugLines) {
+                        debugBuffer.shift();
+                    }
+                    
+                    // Update display
+                    const debugOutput = document.getElementById("DebugOutput");
+                    debugOutput.textContent = debugBuffer.join('\n') + '\n';
+                    debugOutput.scrollTop = debugOutput.scrollHeight;
+                    
+                    // Also log to console for backup
+                    console.log(`[DEBUG] ${message}`);
+                }
+            }
+
+            function updateWebSocketStatus(status, className) {
+                const statusElement = document.getElementById("websocket-status");
+                statusElement.textContent = `WebSocket: ${status}`;
+                statusElement.className = `websocket-status ${className}`;
+            }
+
+            function testWebSocketConnection() {
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                    addDebugLine('🧪 WebSocket test: Connection is OPEN and ready');
+                    addDebugLine(`🧪 Current monitoring status: ${isMonitoringParticipants ? 'ACTIVE' : 'INACTIVE'}`);
+                    addDebugLine(`🧪 Notification channel ID: ${notificationChannelId || 'None'}`);
+                } else if (websocket) {
+                    addDebugLine(`🧪 WebSocket test: Connection state is ${websocket.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)`);
+                } else {
+                    addDebugLine('🧪 WebSocket test: No connection established');
+                }
+            }
 
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
@@ -131,18 +235,10 @@
                 const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
 
                 // Initialize debug display
-                const debugOutput = document.getElementById("DebugOutput");
-                if (SHOWDEBUG) {
-                    debugOutput.style.display = 'block';
-                }
-
-                function addDebugLine(message) {
-                    if (SHOWDEBUG) {
-                        const timestamp = new Date().toLocaleTimeString();
-                        debugOutput.textContent += `[${timestamp}] ${message}\n`;
-                        debugOutput.scrollTop = debugOutput.scrollHeight;
-                    }
-                }
+                addDebugLine('🚀 Application initialized');
+                addDebugLine(`📋 Conversation ID: ${conversationId}`);
+                addDebugLine(`👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
+                addDebugLine(`📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
 
                 function sleep(ms) {
                     return new Promise(resolve => setTimeout(resolve, ms));
@@ -180,12 +276,12 @@
                     }
                 }
 
-                // WebSocket notification functions
+                // Enhanced WebSocket notification functions
                 async function setupWebSocketNotifications() {
                     try {
-                        // Step 1: Create notification channel
-                        if (SHOWDEBUG) addDebugLine('🔌 Setting up WebSocket notifications...');
+                        addDebugLine('🔌 Setting up WebSocket notifications...');
                         
+                        // Step 1: Create notification channel
                         const channelResponse = await makeApiCall(
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels`,
                             'POST',
@@ -195,76 +291,115 @@
                         
                         notificationChannelId = channelResponse.id;
                         const websocketUri = channelResponse.connectUri;
+                        addDebugLine(`📡 Channel created: ${notificationChannelId}`);
+                        addDebugLine(`🔗 WebSocket URI: ${websocketUri}`);
                         
-                        // Step 2: Subscribe to conversation events
-                        await makeApiCall(
+                        // Step 2: Subscribe to conversation events - FIXED SUBSCRIPTION
+                        const subscriptionResponse = await makeApiCall(
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                             'POST',
                             [{
-                                id: `v2.detail.events.conversation.${conversationId}.customer.end`
+                                id: `v2.detail.events.conversation.${conversationId}.participant.end`
                             }],
-                            'Subscribing to customer disconnect notifications'
+                            'Subscribing to participant disconnect notifications'
                         );
+                        
+                        addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.participant.end`);
                         
                         // Step 3: Connect WebSocket
                         websocket = new WebSocket(websocketUri);
                         
                         websocket.onopen = function() {
-                            if (SHOWDEBUG) addDebugLine('✅ WebSocket connected successfully');
+                            addDebugLine('✅ WebSocket connected successfully');
+                            updateWebSocketStatus('Connected', 'status-connected');
                         };
                         
                         websocket.onmessage = function(event) {
-                            const notification = JSON.parse(event.data);
-                            handleParticipantNotification(notification);
+                            try {
+                                const notification = JSON.parse(event.data);
+                                addDebugLine(`📨 WebSocket message received: ${JSON.stringify(notification, null, 2)}`);
+                                handleParticipantNotification(notification);
+                            } catch (error) {
+                                addDebugLine(`❌ Error parsing WebSocket message: ${error.message}`);
+                            }
                         };
                         
                         websocket.onerror = function(error) {
                             console.error('WebSocket error:', error);
-                            if (SHOWDEBUG) addDebugLine('❌ WebSocket error: ' + JSON.stringify(error));
+                            addDebugLine(`❌ WebSocket error: ${JSON.stringify(error)}`);
+                            updateWebSocketStatus('Error', 'status-disconnected');
                         };
                         
-                        websocket.onclose = function() {
-                            if (SHOWDEBUG) addDebugLine('🔌 WebSocket connection closed');
+                        websocket.onclose = function(event) {
+                            addDebugLine(`🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
+                            updateWebSocketStatus('Disconnected', 'status-disconnected');
                         };
                         
-                        return true; // Success
+                        // Wait a bit for connection to establish
+                        await sleep(2000);
+                        
+                        if (websocket.readyState === WebSocket.OPEN) {
+                            addDebugLine('🎯 WebSocket setup completed successfully');
+                            return true;
+                        } else {
+                            addDebugLine(`⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
+                            return false;
+                        }
                         
                     } catch (error) {
                         console.error('Failed to setup WebSocket notifications:', error);
-                        if (SHOWDEBUG) addDebugLine('⚠️ WebSocket setup failed - continuing without notifications: ' + error.message);
-                        return false; // Failed but don't throw
+                        addDebugLine(`❌ WebSocket setup failed: ${error.message || error.responseText || 'Unknown error'}`);
+                        updateWebSocketStatus('Setup Failed', 'status-disconnected');
+                        return false;
                     }
                 }
 
                 function handleParticipantNotification(notification) {
-                    if (!isMonitoringParticipants) return;
+                    addDebugLine(`🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
                     
-                    // Check if this is a customer disconnect event
-                    if (notification.id && 
-                        notification.id.includes('customer.end') && 
+                    if (!isMonitoringParticipants) {
+                        addDebugLine('⏸️ Not monitoring participants - ignoring notification');
+                        return;
+                    }
+                    
+                    addDebugLine(`📋 Notification details:`);
+                    addDebugLine(`   Topic: ${notification.topicName}`);
+                    addDebugLine(`   Event Body: ${JSON.stringify(notification.eventBody, null, 2)}`);
+                    
+                    // Check if this is a participant end event
+                    if (notification.topicName && 
+                        notification.topicName.includes('participant.end') && 
                         notification.eventBody) {
                         
                         const eventBody = notification.eventBody;
                         
-                        if (SHOWDEBUG) {
-                            addDebugLine(`📞 Customer disconnect event received:`);
-                            addDebugLine(`   Disconnect Type: ${eventBody.disconnectType}`);
-                            addDebugLine(`   Participant ID: ${eventBody.participantId?.substring(0,8)}...`);
-                            addDebugLine(`   Duration: ${eventBody.interactingDurationMs}ms`);
-                        }
+                        addDebugLine(`🎯 Participant disconnect event detected:`);
+                        addDebugLine(`   Disconnect Type: ${eventBody.disconnectType}`);
+                        addDebugLine(`   Participant ID: ${eventBody.participantId}`);
+                        addDebugLine(`   Purpose: ${eventBody.purpose}`);
+                        addDebugLine(`   Duration: ${eventBody.interactingDurationMs}ms`);
                         
-                        // Check if this is an ENDPOINT disconnect (customer hanging up)
-                        if (eventBody.disconnectType === 'ENDPOINT') {
-                            if (SHOWDEBUG) addDebugLine('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
+                        // Check if this is the customer disconnecting
+                        if (eventBody.participantId === customerParticipantId) {
+                            addDebugLine(`✅ Customer participant disconnect confirmed`);
                             
-                            // Stop monitoring to prevent multiple triggers
-                            isMonitoringParticipants = false;
-                            
-                            // Take agent off hold
-                            takeAgentOffHold();
+                            if (eventBody.disconnectType === 'ENDPOINT') {
+                                addDebugLine('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
+                                
+                                // Stop monitoring to prevent multiple triggers
+                                isMonitoringParticipants = false;
+                                updateWebSocketStatus('Monitoring Stopped', 'status-disconnected');
+                                
+                                // Take agent off hold
+                                takeAgentOffHold();
+                            } else {
+                                addDebugLine(`ℹ️ Customer disconnected but not ENDPOINT type: ${eventBody.disconnectType}`);
+                            }
                         } else {
-                            if (SHOWDEBUG) addDebugLine(`ℹ️ Ignoring disconnect type: ${eventBody.disconnectType}`);
+                            addDebugLine(`ℹ️ Different participant disconnected: ${eventBody.participantId}`);
                         }
+                    } else {
+                        addDebugLine('ℹ️ Notification not a participant end event');
                     }
                 }
 
@@ -279,7 +414,7 @@
                             'FINAL STEP: Taking agent off hold'
                         );
                         
-                        if (SHOWDEBUG) addDebugLine('🎉 Agent taken off hold - TSN Reset sequence complete!');
+                        addDebugLine('🎉 Agent taken off hold - TSN Reset sequence complete!');
                         document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed - Agent off hold";
                         
                         // Clean up WebSocket after successful completion
@@ -287,7 +422,7 @@
                         
                     } catch (error) {
                         console.error("Error taking agent off hold:", error);
-                        if (SHOWDEBUG) addDebugLine(`❌ Error taking agent off hold: ${error.responseText || error.message}`);
+                        addDebugLine(`❌ Error taking agent off hold: ${error.responseText || error.message}`);
                         document.getElementById("ConfirmationMessage").textContent = "❌ Error taking agent off hold";
                     }
                 }
@@ -296,7 +431,8 @@
                     if (websocket) {
                         websocket.close();
                         websocket = null;
-                        if (SHOWDEBUG) addDebugLine('🧹 WebSocket cleaned up');
+                        addDebugLine('🧹 WebSocket cleaned up');
+                        updateWebSocketStatus('Cleaned Up', 'status-disconnected');
                     }
                     isMonitoringParticipants = false;
                 }
@@ -306,15 +442,31 @@
                     cleanupWebSocket();
                 });
 
+                // Keep WebSocket alive with heartbeat
+                function startWebSocketHeartbeat() {
+                    setInterval(() => {
+                        if (websocket && websocket.readyState === WebSocket.OPEN) {
+                            // Send a ping message to keep connection alive
+                            try {
+                                websocket.send(JSON.stringify({type: 'ping'}));
+                            } catch (error) {
+                                addDebugLine(`⚠️ Heartbeat failed: ${error.message}`);
+                            }
+                        }
+                    }, 30000); // Every 30 seconds
+                }
+
                 window.startSequence = async function() {
                     document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                    if (SHOWDEBUG) {
-                        debugOutput.textContent = ''; // Clear previous debug output
-                    }
+                    addDebugLine('🚀 Starting TSN Reset sequence...');
 
                     try {
                         // Try to setup WebSocket notifications (non-blocking)
                         const websocketSetupSuccess = await setupWebSocketNotifications();
+                        
+                        if (websocketSetupSuccess) {
+                            startWebSocketHeartbeat();
+                        }
                         
                         // Step 1: Try POST consult first, fallback to POST participants
                         let step1Success = false;
@@ -334,7 +486,7 @@
                             );
                             step1Success = true;
                         } catch (error) {
-                            if (SHOWDEBUG) addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
+                            addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
                             
                             try {
                                 // Step 1b: POST participants (fallback)
@@ -347,10 +499,10 @@
                                     'STEP 1b: Adding queue to conference (fallback)'
                                 );
                                 step1Success = true;
-                                if (SHOWDEBUG) addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
+                                addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
                                 
                                 // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
-                                if (SHOWDEBUG) addDebugLine('⏳ Waiting 1 second before final step...');
+                                addDebugLine('⏳ Waiting 1 second before final step...');
                                 await sleep(WAITTIME);
                                 
                                 // Step 3: PATCH participant held
@@ -366,22 +518,23 @@
                                 // Start monitoring for participant changes (only if WebSocket is working)
                                 if (websocketSetupSuccess) {
                                     isMonitoringParticipants = true;
-                                    if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for customer disconnections...');
+                                    updateWebSocketStatus('Monitoring Active', 'status-monitoring');
+                                    addDebugLine('👁️ Now monitoring for customer disconnections...');
                                     document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
                                 } else {
-                                    if (SHOWDEBUG) addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
+                                    addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
                                     document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
                                 }
                                 
                                 return; // Exit early since we've completed the sequence
                             } catch (fallbackError) {
-                                if (SHOWDEBUG) addDebugLine(`❌ Both Step 1a and 1b failed`);
+                                addDebugLine(`❌ Both Step 1a and 1b failed`);
                                 throw fallbackError; // Re-throw to trigger main error handling
                             }
                         }
 
                         // Wait time pause
-                        if (SHOWDEBUG) addDebugLine('⏳ Waiting 1 second...');
+                        addDebugLine('⏳ Waiting 1 second...');
                         await sleep(WAITTIME);
 
                         // Step 2: Try PATCH consult first, fallback to POST participants
@@ -399,7 +552,7 @@
                             );
                             step2Success = true;
                         } catch (error) {
-                            if (SHOWDEBUG) addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
+                            addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
                             
                             try {
                                 // Step 2b: POST participants (fallback)
@@ -412,15 +565,15 @@
                                     'STEP 2b: Adding queue to conference (fallback)'
                                 );
                                 step2Success = true;
-                                if (SHOWDEBUG) addDebugLine('✅ Step 2b fallback succeeded');
+                                addDebugLine('✅ Step 2b fallback succeeded');
                             } catch (fallbackError) {
-                                if (SHOWDEBUG) addDebugLine(`❌ Both Step 2a and 2b failed`);
+                                addDebugLine(`❌ Both Step 2a and 2b failed`);
                                 throw fallbackError; // Re-throw to trigger main error handling
                             }
                         }
 
                         // Wait time pause
-                        if (SHOWDEBUG) addDebugLine('⏳ Waiting 1 second...');
+                        addDebugLine('⏳ Waiting 1 second...');
                         await sleep(WAITTIME);
 
                         // Step 3: PATCH participant held
@@ -436,18 +589,19 @@
                         // Start monitoring for participant changes (only if WebSocket is working)
                         if (websocketSetupSuccess) {
                             isMonitoringParticipants = true;
-                            if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for customer disconnections...');
-                            if (SHOWDEBUG) addDebugLine('🎉 Initial sequence completed successfully!');
+                            updateWebSocketStatus('Monitoring Active', 'status-monitoring');
+                            addDebugLine('👁️ Now monitoring for customer disconnections...');
+                            addDebugLine('🎉 Initial sequence completed successfully!');
                             document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
                         } else {
-                            if (SHOWDEBUG) addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
-                            if (SHOWDEBUG) addDebugLine('🎉 Initial sequence completed successfully!');
+                            addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
+                            addDebugLine('🎉 Initial sequence completed successfully!');
                             document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
                         }
                         
                     } catch (error) {
                         console.error("Sequence error:", error);
-                        if (SHOWDEBUG) addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
+                        addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
                         document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
                         
                         // Clean up on error
