@@ -299,12 +299,12 @@
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                             'POST',
                             [{
-                                id: `v2.detail.events.conversation.${conversationId}.participant.end`
+                                id: `v2.detail.events.conversation.${conversationId}.customer.end`
                             }],
-                            'Subscribing to participant disconnect notifications'
+                            'Subscribing to customer disconnect notifications'
                         );
                         
-                        addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.participant.end`);
+                        addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.customer.end`);
                         
                         // Step 3: Connect WebSocket
                         websocket = new WebSocket(websocketUri);
