@@ -201,7 +201,7 @@
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                             'POST',
                             [{
-                                topicName: `v2.detail.events.conversation.${conversationId}.customer.end`
+                                id: `v2.detail.events.conversation.${conversationId}.customer.end`
                             }],
                             'Subscribing to customer disconnect notifications'
                         );
