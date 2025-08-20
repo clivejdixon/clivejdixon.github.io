@@ -126,7 +126,7 @@
                 
                 sequenceRunning = true;
                 document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                addDebugLine('🚀 45 Starting TSN Reset sequence...');
+                addDebugLine('🚀 46 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -414,6 +414,21 @@
                     websocket.onclose = function(event) {
                         addDebugLine(`🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
                         updateWebSocketStatus('Disconnected', 'status-disconnected');
+                        
+                        // If we're still monitoring and the close wasn't intentional, try to reconnect
+                        if (isMonitoringParticipants && event.code !== 1000) { // 1000 = normal closure
+                            addDebugLine('🔄 Unexpected WebSocket closure during monitoring - attempting reconnect in 5 seconds...');
+                            setTimeout(async () => {
+                                if (isMonitoringParticipants) {
+                                    addDebugLine('🔄 Attempting WebSocket reconnection...');
+                                    try {
+                                        await setupWebSocketNotifications();
+                                    } catch (error) {
+                                        addDebugLine(`❌ WebSocket reconnection failed: ${error.message}`);
+                                    }
+                                }
+                            }, 5000);
+                        }
                     };
                     
                     // Wait a bit for connection to establish
@@ -429,6 +444,24 @@
                             addDebugLine('📤 Sent test ping message to WebSocket');
                         } catch (error) {
                             addDebugLine(`❌ Failed to send test ping: ${error.message}`);
+                        }
+                        
+                        // Set up periodic heartbeat to keep connection alive
+                        if (websocket.readyState === WebSocket.OPEN) {
+                            const heartbeatInterval = setInterval(() => {
+                                if (websocket && websocket.readyState === WebSocket.OPEN && isMonitoringParticipants) {
+                                    try {
+                                        websocket.send(JSON.stringify({type: 'heartbeat', timestamp: new Date().toISOString()}));
+                                        addDebugLine('💓 Sent heartbeat to WebSocket');
+                                    } catch (error) {
+                                        addDebugLine(`❌ Heartbeat failed: ${error.message}`);
+                                        clearInterval(heartbeatInterval);
+                                    }
+                                } else {
+                                    clearInterval(heartbeatInterval);
+                                    addDebugLine('💓 Stopped heartbeat - monitoring ended or connection closed');
+                                }
+                            }, 30000); // Send heartbeat every 30 seconds
                         }
                         
                         return true;
@@ -607,16 +640,34 @@
             // Monitor for page unload but don't cleanup WebSocket automatically
             window.addEventListener('beforeunload', function(event) {
                 addDebugLine(`⚠️ Page unload detected - Reason: ${event.type} - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
-                // Don't cleanup WebSocket automatically - let it stay connected
+                
+                // Try to prevent the unload if we're monitoring
+                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                    event.preventDefault();
+                    event.returnValue = 'WebSocket monitoring is active. Are you sure you want to leave?';
+                    addDebugLine('🛑 Attempting to prevent page unload to maintain WebSocket monitoring');
+                    return 'WebSocket monitoring is active. Are you sure you want to leave?';
+                }
             });
 
             // Add more event listeners to debug what's causing reloads
             window.addEventListener('pagehide', function(event) {
                 addDebugLine(`⚠️ Page hide detected - persisted: ${event.persisted}`);
+                if (event.persisted && isMonitoringParticipants) {
+                    addDebugLine('ℹ️ Page going into back/forward cache - WebSocket should remain active');
+                }
             });
 
             window.addEventListener('pageshow', function(event) {
                 addDebugLine(`⚠️ Page show detected - persisted: ${event.persisted}`);
+                if (event.persisted && isMonitoringParticipants) {
+                    addDebugLine('ℹ️ Page restored from back/forward cache - checking WebSocket state');
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        addDebugLine('✅ WebSocket still connected after page restore');
+                    } else {
+                        addDebugLine('❌ WebSocket lost after page restore - may need to reconnect');
+                    }
+                }
             });
 
             // Prevent form submissions that might reload the page
