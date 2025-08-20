@@ -35,23 +35,14 @@
                 overflow-y: auto;
             }
 
-            .websocket-status {
-                margin: 10px 0;
-                padding: 5px 10px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
 
-            .status-connected { background-color: #d4edda; color: #155724; }
-            .status-disconnected { background-color: #f8d7da; color: #721c24; }
-            .status-monitoring { background-color: #d1ecf1; color: #0c5460; }
         </style>
     </head>
     <body>
         <div class="center">
             <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
             
-            <div id="websocket-status" class="websocket-status status-disconnected">WebSocket: Not Connected</div>
+
             
             <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
             
@@ -77,7 +68,7 @@
             let notificationChannelId = null;
             let isMonitoringParticipants = false;
             let debugBuffer = [];
-            let maxDebugLines = 150;
+            let maxDebugLines = 100;
             let sequenceRunning = false;
 
             // Enhanced debug functions
@@ -99,17 +90,14 @@
                         debugOutput.scrollTop = debugOutput.scrollHeight;
                     }
                     
+                    // Also log to console for backup
+                    console.log(`[DEBUG] ${message}`);
                 }
-                // Also log to console for backup
-                console.log(`[DEBUG] ${message}`);
             }
 
             function updateWebSocketStatus(status, className) {
-                const statusElement = document.getElementById("websocket-status");
-                if (statusElement) {
-                    statusElement.textContent = `WebSocket: ${status}`;
-                    statusElement.className = `websocket-status ${className}`;
-                }
+                // Removed WebSocket status display as requested
+                addDebugLine(`🔄 WebSocket status: ${status}`);
             }
 
             function getTokenAndStateFromHash() {
@@ -281,10 +269,12 @@
                         websocket.onmessage = function(event) {
                             try {
                                 const notification = JSON.parse(event.data);
-                                addDebugLine(`📨 WebSocket message received: ${JSON.stringify(notification, null, 2)}`);
+                                addDebugLine(`📨 RAW WebSocket message: ${event.data}`);
+                                addDebugLine(`📨 Parsed notification: ${JSON.stringify(notification, null, 2)}`);
                                 handleParticipantNotification(notification);
                             } catch (error) {
                                 addDebugLine(`❌ Error parsing WebSocket message: ${error.message}`);
+                                addDebugLine(`📨 Raw data: ${event.data}`);
                             }
                         };
                         
@@ -321,14 +311,15 @@
                 function handleParticipantNotification(notification) {
                     addDebugLine(`🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
                     
-                //    if (!isMonitoringParticipants) {
-                //        addDebugLine('⏸️ Not monitoring participants - ignoring notification');
-                //        return;
-                    }
-                    
+                    // Log ALL notifications regardless of monitoring state
                     addDebugLine(`📋 Notification details:`);
-                    addDebugLine(`   Topic: ${notification.topicName}`);
-                    addDebugLine(`   Event Body: ${JSON.stringify(notification.eventBody, null, 2)}`);
+                    addDebugLine(`   Topic: ${notification.topicName || 'No topic'}`);
+                    addDebugLine(`   Event Body: ${JSON.stringify(notification.eventBody || {}, null, 2)}`);
+                    
+                    if (!isMonitoringParticipants) {
+                        addDebugLine('⏸️ Not monitoring participants - but still logging notification');
+                        return;
+                    }
                     
                     // Check if this is a customer end event
                     if (notification.topicName && 
@@ -376,9 +367,9 @@
                         document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed - Agent off hold";
                         
                         // Clean up WebSocket after successful completion
-                        //setTimeout(() => {
-                        //    cleanupWebSocket();
-                        //}, 2000); // Wait 2 seconds before cleanup to see any final messages
+                        setTimeout(() => {
+                            cleanupWebSocket();
+                        }, 2000); // Wait 2 seconds before cleanup to see any final messages
                         
                     } catch (error) {
                         console.error("Error taking agent off hold:", error);
@@ -388,20 +379,20 @@
                 }
 
                 function cleanupWebSocket() {
+                    addDebugLine(`🧹 cleanupWebSocket() called - Current state: ${websocket ? websocket.readyState : 'null'}`);
                     if (websocket) {
                         websocket.close();
                         websocket = null;
                         addDebugLine('🧹 WebSocket cleaned up');
-                        updateWebSocketStatus('Cleaned Up', 'status-disconnected');
                     }
                     isMonitoringParticipants = false;
                     sequenceRunning = false;
                 }
 
-                // Clean up on page unload
+                // Monitor for page unload but don't cleanup WebSocket automatically
                 window.addEventListener('beforeunload', function() {
-                    addDebugLine(`❌ EventListener cleanup Websocket Called on page unload`);
-                //    cleanupWebSocket();
+                    addDebugLine(`⚠️ Page unload detected - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
+                    // Don't cleanup WebSocket automatically - let it stay connected
                 });
 
                 // MAIN SEQUENCE FUNCTION - WebSocket setup AFTER agent is on hold
@@ -414,7 +405,7 @@
                     
                     sequenceRunning = true;
                     document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                    addDebugLine('🚀 42 Starting TSN Reset sequence...');
+                    addDebugLine('🚀 43 Starting TSN Reset sequence...');
 
                     try {
                         // Step 1: Try POST consult first, fallback to POST participants
@@ -562,7 +553,7 @@
                         document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
                         
                         // Clean up on error
-                        // cleanupWebSocket();
+                        cleanupWebSocket();
                     } finally {
                         // Always reset the sequence running flag
                         sequenceRunning = false;
