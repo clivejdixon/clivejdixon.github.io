@@ -299,12 +299,12 @@
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                             'POST',
                             [{
-                                id: `v2.detail.events.conversation.${conversationId}.participant.end`
+                                id: `v2.detail.events.conversation.${conversationId}.customer.end`
                             }],
-                            'Subscribing to participant disconnect notifications'
+                            'Subscribing to customer disconnect notifications'
                         );
                         
-                        addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.participant.end`);
+                        addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.customer.end`);
                         
                         // Step 3: Connect WebSocket
                         websocket = new WebSocket(websocketUri);
@@ -366,22 +366,24 @@
                     addDebugLine(`   Topic: ${notification.topicName}`);
                     addDebugLine(`   Event Body: ${JSON.stringify(notification.eventBody, null, 2)}`);
                     
-                    // Check if this is a participant end event
+                    // Check if this is a customer end event
+                    if (notification.topicName) {addDebugLine(`topicname`);} else {addDebugLine(`NOT topicname`)}
+                    if (notification.topicName.includes('customer.end') {addDebugLine(`customer.end`);} else {addDebugLine(`NOT customer.end`)}
                     if (notification.topicName && 
-                        notification.topicName.includes('participant.end') && 
+                        notification.topicName.includes('customer.end') && 
                         notification.eventBody) {
                         
                         const eventBody = notification.eventBody;
                         
-                        addDebugLine(`🎯 Participant disconnect event detected:`);
+                        addDebugLine(`🎯 customer disconnect event detected:`);
                         addDebugLine(`   Disconnect Type: ${eventBody.disconnectType}`);
                         addDebugLine(`   Participant ID: ${eventBody.participantId}`);
                         addDebugLine(`   Purpose: ${eventBody.purpose}`);
                         addDebugLine(`   Duration: ${eventBody.interactingDurationMs}ms`);
                         
                         // Check if this is the customer disconnecting
-                        if (eventBody.participantId === customerParticipantId) {
-                            addDebugLine(`✅ Customer participant disconnect confirmed`);
+                        // if (eventBody.participantId === customerParticipantId) {
+                        //    addDebugLine(`✅ Customer participant disconnect confirmed`);
                             
                             if (eventBody.disconnectType === 'ENDPOINT') {
                                 addDebugLine('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
@@ -395,11 +397,11 @@
                             } else {
                                 addDebugLine(`ℹ️ Customer disconnected but not ENDPOINT type: ${eventBody.disconnectType}`);
                             }
-                        } else {
-                            addDebugLine(`ℹ️ Different participant disconnected: ${eventBody.participantId}`);
-                        }
+                      //  } else {
+                      //      addDebugLine(`ℹ️ Different participant disconnected: ${eventBody.participantId}`);
+                      //  }
                     } else {
-                        addDebugLine('ℹ️ Notification not a participant end event');
+                        addDebugLine('ℹ️ Notification not a customer end event');
                     }
                 }
 
