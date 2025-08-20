@@ -126,7 +126,7 @@
                 
                 sequenceRunning = true;
                 document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                addDebugLine('🚀 46 Starting TSN Reset sequence...');
+                addDebugLine('🚀 48 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -641,12 +641,11 @@
             window.addEventListener('beforeunload', function(event) {
                 addDebugLine(`⚠️ Page unload detected - Reason: ${event.type} - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
                 
-                // Try to prevent the unload if we're monitoring
+                // Silently prevent the unload if we're monitoring (no dialog)
                 if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
                     event.preventDefault();
-                    event.returnValue = 'WebSocket monitoring is active. Are you sure you want to leave?';
-                    addDebugLine('🛑 Attempting to prevent page unload to maintain WebSocket monitoring');
-                    return 'WebSocket monitoring is active. Are you sure you want to leave?';
+                    addDebugLine('🛑 Silently preventing page unload to maintain WebSocket monitoring');
+                    return false; // Prevent without showing dialog
                 }
             });
 
@@ -676,6 +675,36 @@
                 event.preventDefault();
                 return false;
             });
+
+            // Prevent any navigation attempts during monitoring
+            window.addEventListener('popstate', function(event) {
+                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                    addDebugLine('🛑 Navigation attempt blocked during monitoring');
+                    event.preventDefault();
+                    history.pushState(null, null, window.location.href); // Stay on current page
+                    return false;
+                }
+            });
+
+            // Override window.location changes during monitoring
+            let originalPushState = history.pushState;
+            let originalReplaceState = history.replaceState;
+            
+            history.pushState = function() {
+                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                    addDebugLine('🛑 Blocked pushState during monitoring');
+                    return;
+                }
+                return originalPushState.apply(history, arguments);
+            };
+            
+            history.replaceState = function() {
+                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                    addDebugLine('🛑 Blocked replaceState during monitoring');
+                    return;
+                }
+                return originalReplaceState.apply(history, arguments);
+            };
 
             // Check if we're in an iframe that might be reloading
             if (window.parent !== window) {
