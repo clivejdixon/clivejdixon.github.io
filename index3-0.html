@@ -21,41 +21,41 @@
                 text-align: center;
             }
 
-            #DebugOutput {
-                margin-top: 20px; 
-                padding: 10px; 
-                background-color: #f0f0f0; 
-                border: 1px solid #ccc; 
-                border-radius: 5px; 
-                font-family: monospace; 
-                font-size: 12px; 
-                text-align: left; 
-                white-space: pre-wrap; 
-                max-height: 400px; 
-                overflow-y: auto;
-            }
+           // #DebugOutput {
+           //     margin-top: 20px; 
+           //     padding: 10px; 
+           //     background-color: #f0f0f0; 
+           //     border: 1px solid #ccc; 
+           //     border-radius: 5px; 
+           //     font-family: monospace; 
+           //     font-size: 12px; 
+           //     text-align: left; 
+           //     white-space: pre-wrap; 
+           //     max-height: 400px; 
+           //     overflow-y: auto;
+           // }
 
-            .websocket-status {
-                margin: 10px 0;
-                padding: 5px 10px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
+           // .websocket-status {
+           //     margin: 10px 0;
+           //     padding: 5px 10px;
+           //     border-radius: 3px;
+           //     font-weight: bold;
+           // }
 
-            .status-connected { background-color: #d4edda; color: #155724; }
-            .status-disconnected { background-color: #f8d7da; color: #721c24; }
-            .status-monitoring { background-color: #d1ecf1; color: #0c5460; }
+           // .status-connected { background-color: #d4edda; color: #155724; }
+           // .status-disconnected { background-color: #f8d7da; color: #721c24; }
+           // .status-monitoring { background-color: #d1ecf1; color: #0c5460; }
         </style>
     </head>
     <body>
         <div class="center">
             <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
             
-            <div id="websocket-status" class="websocket-status status-disconnected">WebSocket: Not Connected</div>
+          //  <div id="websocket-status" class="websocket-status status-disconnected">WebSocket: Not Connected</div>
             
             <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
             
-            <div id="DebugOutput" style="display: block;"></div>
+          //  <div id="DebugOutput" style="display: block;"></div>
             
             <table class="redTable">
                 <tbody id="tabla-container"></tbody>
@@ -93,11 +93,11 @@
                     }
                     
                     // Update display
-                    const debugOutput = document.getElementById("DebugOutput");
-                    if (debugOutput) {
-                        debugOutput.textContent = debugBuffer.join('\n') + '\n';
-                        debugOutput.scrollTop = debugOutput.scrollHeight;
-                    }
+                //    const debugOutput = document.getElementById("DebugOutput");
+                //    if (debugOutput) {
+                //        debugOutput.textContent = debugBuffer.join('\n') + '\n';
+                //        debugOutput.scrollTop = debugOutput.scrollHeight;
+                //    }
                     
                 }
                 // Also log to console for backup
@@ -414,7 +414,7 @@
                     
                     sequenceRunning = true;
                     document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                    addDebugLine('🚀 39 Starting TSN Reset sequence...');
+                    addDebugLine('🚀 40 Starting TSN Reset sequence...');
 
                     try {
                         // Step 1: Try POST consult first, fallback to POST participants
