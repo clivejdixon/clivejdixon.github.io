@@ -126,7 +126,7 @@
                 
                 sequenceRunning = true;
                 document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                addDebugLine('🚀 48 Starting TSN Reset sequence...');
+                addDebugLine('🚀 49 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -637,16 +637,57 @@
                 }
             })();
 
-            // Monitor for page unload but don't cleanup WebSocket automatically
+            // Use a more aggressive approach to prevent page navigation during monitoring
+            let originalAssign = window.location.assign;
+            let originalReplace = window.location.replace;
+            let originalReload = window.location.reload;
+            let originalHref = window.location.href;
+
+            // Override all location change methods
+            Object.defineProperty(window.location, 'href', {
+                get: function() { return originalHref; },
+                set: function(val) {
+                    if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                        addDebugLine('🛑 Blocked location.href change during monitoring');
+                        return;
+                    }
+                    originalHref = val;
+                    window.location.assign(val);
+                }
+            });
+
+            window.location.assign = function(url) {
+                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                    addDebugLine('🛑 Blocked location.assign during monitoring');
+                    return;
+                }
+                return originalAssign.call(window.location, url);
+            };
+
+            window.location.replace = function(url) {
+                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                    addDebugLine('🛑 Blocked location.replace during monitoring');
+                    return;
+                }
+                return originalReplace.call(window.location, url);
+            };
+
+            window.location.reload = function() {
+                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                    addDebugLine('🛑 Blocked location.reload during monitoring');
+                    return;
+                }
+                return originalReload.call(window.location);
+            };
+
+            // Monitor for page unload but just log it
             window.addEventListener('beforeunload', function(event) {
                 addDebugLine(`⚠️ Page unload detected - Reason: ${event.type} - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
                 
-                // Silently prevent the unload if we're monitoring (no dialog)
                 if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    event.preventDefault();
-                    addDebugLine('🛑 Silently preventing page unload to maintain WebSocket monitoring');
-                    return false; // Prevent without showing dialog
+                    addDebugLine('⚠️ Page unload during monitoring - WebSocket may be lost');
                 }
+                // Don't prevent - just log
             });
 
             // Add more event listeners to debug what's causing reloads
