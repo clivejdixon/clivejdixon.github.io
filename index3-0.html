@@ -80,6 +80,7 @@
             let isMonitoringParticipants = false;
             let debugBuffer = []; // Keep a persistent debug buffer
             let maxDebugLines = 100; // Limit buffer size
+            let sequenceRunning = false; // Prevent multiple executions
 
             // Enhanced debug functions
             function addDebugLine(message) {
@@ -396,6 +397,7 @@
                         updateWebSocketStatus('Cleaned Up', 'status-disconnected');
                     }
                     isMonitoringParticipants = false;
+                    sequenceRunning = false; // Also reset sequence flag on cleanup
                 }
 
                 // Clean up on page unload
@@ -404,12 +406,17 @@
                 });
 
                 window.startSequence = async function() {
+                    // Prevent multiple sequence executions
+                    if (sequenceRunning) {
+                        addDebugLine('⚠️ Sequence already running, ignoring request');
+                        return;
+                    }
+                    
+                    sequenceRunning = true;
                     document.getElementById("ConfirmationMessage").textContent = "Processing...";
                     addDebugLine('🚀 Starting TSN Reset sequence...');
 
                     try {
-                        // Try to setup WebSocket notifications (non-blocking)
-                        const websocketSetupSuccess = await setupWebSocketNotifications();
                         
                         // Step 1: Try POST consult first, fallback to POST participants
                         let step1Success = false;
@@ -457,6 +464,10 @@
                                     },
                                     'STEP 3: Placing agent on hold'
                                 );
+
+                                // NOW setup WebSocket notifications AFTER agent is on hold
+                                addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
+                                const websocketSetupSuccess = await setupWebSocketNotifications();
 
                                 // Start monitoring for participant changes (only if WebSocket is working)
                                 if (websocketSetupSuccess) {
@@ -529,6 +540,10 @@
                             'STEP 3: Placing agent on hold'
                         );
 
+                        // NOW setup WebSocket notifications AFTER agent is on hold
+                        addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
+                        const websocketSetupSuccess = await setupWebSocketNotifications();
+
                         // Start monitoring for participant changes (only if WebSocket is working)
                         if (websocketSetupSuccess) {
                             isMonitoringParticipants = true;
@@ -549,6 +564,9 @@
                         
                         // Clean up on error
                         cleanupWebSocket();
+                    } finally {
+                        // Always reset the sequence running flag
+                        sequenceRunning = false;
                     }
                 };
             }
