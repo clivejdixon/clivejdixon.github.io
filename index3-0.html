@@ -201,9 +201,9 @@
                             `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                             'POST',
                             [{
-                                topicName: `v2.detail.events.conversation.${conversationId}.attributes`
+                                topicName: `v2.detail.events.conversation.${conversationId}.customer.end`
                             }],
-                            'Subscribing to conversation notifications'
+                            'Subscribing to customer disconnect notifications'
                         );
                         
                         // Step 3: Connect WebSocket
@@ -227,43 +227,43 @@
                             if (SHOWDEBUG) addDebugLine('🔌 WebSocket connection closed');
                         };
                         
+                        return true; // Success
+                        
                     } catch (error) {
                         console.error('Failed to setup WebSocket notifications:', error);
-                        if (SHOWDEBUG) addDebugLine('❌ Failed to setup WebSocket: ' + error.message);
-                        throw error;
+                        if (SHOWDEBUG) addDebugLine('⚠️ WebSocket setup failed - continuing without notifications: ' + error.message);
+                        return false; // Failed but don't throw
                     }
                 }
 
                 function handleParticipantNotification(notification) {
                     if (!isMonitoringParticipants) return;
                     
-                    // Check if this is a conversation participant event
-                    if (notification.topicName && notification.topicName.includes('conversations.calls') && notification.eventBody) {
-                        const participants = notification.eventBody.participants || [];
+                    // Check if this is a customer disconnect event
+                    if (notification.topicName && 
+                        notification.topicName.includes('customer.end') && 
+                        notification.eventBody) {
                         
-                        // Count active participants (connected, alerting, or held)
-                        const activeParticipants = participants.filter(p => 
-                            p.state === 'connected' || 
-                            p.state === 'alerting' || 
-                            (p.state === 'held' && p.held === true)
-                        );
+                        const eventBody = notification.eventBody;
                         
                         if (SHOWDEBUG) {
-                            addDebugLine(`📊 Participant update: ${activeParticipants.length} active participants`);
-                            activeParticipants.forEach((p, i) => {
-                                addDebugLine(`   ${i+1}. ID: ${p.id.substring(0,8)}... State: ${p.state} Held: ${p.held || false}`);
-                            });
+                            addDebugLine(`📞 Customer disconnect event received:`);
+                            addDebugLine(`   Disconnect Type: ${eventBody.disconnectType}`);
+                            addDebugLine(`   Participant ID: ${eventBody.participantId?.substring(0,8)}...`);
+                            addDebugLine(`   Duration: ${eventBody.interactingDurationMs}ms`);
                         }
                         
-                        // Check if we now have only 2 participants (agent + one other)
-                        if (activeParticipants.length <= 2) {
-                            if (SHOWDEBUG) addDebugLine('🎯 Only 2 participants remaining - taking agent off hold...');
+                        // Check if this is an ENDPOINT disconnect (customer hanging up)
+                        if (eventBody.disconnectType === 'ENDPOINT') {
+                            if (SHOWDEBUG) addDebugLine('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
                             
                             // Stop monitoring to prevent multiple triggers
                             isMonitoringParticipants = false;
                             
                             // Take agent off hold
                             takeAgentOffHold();
+                        } else {
+                            if (SHOWDEBUG) addDebugLine(`ℹ️ Ignoring disconnect type: ${eventBody.disconnectType}`);
                         }
                     }
                 }
@@ -313,8 +313,8 @@
                     }
 
                     try {
-                        // Setup WebSocket notifications first
-                        await setupWebSocketNotifications();
+                        // Try to setup WebSocket notifications (non-blocking)
+                        const websocketSetupSuccess = await setupWebSocketNotifications();
                         
                         // Step 1: Try POST consult first, fallback to POST participants
                         let step1Success = false;
@@ -363,10 +363,15 @@
                                     'STEP 3: Placing agent on hold'
                                 );
 
-                                // Start monitoring for participant changes
-                                isMonitoringParticipants = true;
-                                if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for participant disconnections...');
-                                document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                                // Start monitoring for participant changes (only if WebSocket is working)
+                                if (websocketSetupSuccess) {
+                                    isMonitoringParticipants = true;
+                                    if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for customer disconnections...');
+                                    document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                                } else {
+                                    if (SHOWDEBUG) addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
+                                    document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
+                                }
                                 
                                 return; // Exit early since we've completed the sequence
                             } catch (fallbackError) {
@@ -428,11 +433,17 @@
                             'STEP 3: Placing agent on hold'
                         );
 
-                        // Start monitoring for participant changes
-                        isMonitoringParticipants = true;
-                        if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for participant disconnections...');
-                        if (SHOWDEBUG) addDebugLine('🎉 Initial sequence completed successfully!');
-                        document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                        // Start monitoring for participant changes (only if WebSocket is working)
+                        if (websocketSetupSuccess) {
+                            isMonitoringParticipants = true;
+                            if (SHOWDEBUG) addDebugLine('👁️ Now monitoring for customer disconnections...');
+                            if (SHOWDEBUG) addDebugLine('🎉 Initial sequence completed successfully!');
+                            document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                        } else {
+                            if (SHOWDEBUG) addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
+                            if (SHOWDEBUG) addDebugLine('🎉 Initial sequence completed successfully!');
+                            document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
+                        }
                         
                     } catch (error) {
                         console.error("Sequence error:", error);
