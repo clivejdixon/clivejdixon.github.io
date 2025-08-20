@@ -126,7 +126,7 @@
                 
                 sequenceRunning = true;
                 document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                addDebugLine('🚀 49 Starting TSN Reset sequence...');
+                addDebugLine('🚀 50 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -557,11 +557,104 @@
                 }
                 isMonitoringParticipants = false;
                 sequenceRunning = false;
+                
+                // Clear any sessionStorage monitoring flags
+                try {
+                    sessionStorage.removeItem('tsnMonitoringActive');
+                    sessionStorage.removeItem('tsnConversationId');
+                    sessionStorage.removeItem('tsnAgentId');
+                } catch (e) {
+                    // Ignore sessionStorage errors
+                }
+            }
+
+            // Polling fallback for when WebSocket fails
+            async function setupPollingFallback(conversationId, agentId) {
+                addDebugLine('🔄 Setting up polling fallback for customer disconnect detection...');
+                let pollCount = 0;
+                const maxPolls = 120; // Poll for up to 10 minutes (120 * 5 seconds)
+                
+                const pollForCustomerDisconnect = async () => {
+                    try {
+                        pollCount++;
+                        addDebugLine(`🔍 Polling for customer status (${pollCount}/${maxPolls})...`);
+                        
+                        // Get conversation participants
+                        const response = await makeApiCall(
+                            `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`,
+                            'GET',
+                            null,
+                            `Polling conversation participants (${pollCount})`
+                        );
+                        
+                        // Check if customer is still connected
+                        const participants = response.participants || [];
+                        const customerParticipants = participants.filter(p => 
+                            p.purpose === 'customer' && 
+                            (p.state === 'connected' || p.state === 'alerting')
+                        );
+                        
+                        addDebugLine(`👥 Found ${customerParticipants.length} active customer participants`);
+                        
+                        if (customerParticipants.length === 0) {
+                            // Customer has disconnected!
+                            addDebugLine('🎯 Polling detected customer disconnect - taking agent off hold...');
+                            
+                            // Take agent off hold
+                            await makeApiCall(
+                                `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}/participants/${agentId}`,
+                                'PATCH',
+                                { held: false },
+                                'POLLING FALLBACK: Taking agent off hold'
+                            );
+                            
+                            addDebugLine('🎉 Agent taken off hold via polling fallback - TSN Reset complete!');
+                            document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed via polling - Agent off hold";
+                            return; // Stop polling
+                        }
+                        
+                        // Continue polling if we haven't reached max polls
+                        if (pollCount < maxPolls) {
+                            setTimeout(pollForCustomerDisconnect, 5000); // Poll every 5 seconds
+                        } else {
+                            addDebugLine('⚠️ Polling timeout reached - stopping fallback monitoring');
+                        }
+                        
+                    } catch (error) {
+                        addDebugLine(`❌ Polling error: ${error.responseText || error.message}`);
+                        if (pollCount < maxPolls) {
+                            setTimeout(pollForCustomerDisconnect, 5000); // Retry in 5 seconds
+                        }
+                    }
+                };
+                
+                // Start polling in 2 seconds
+                setTimeout(pollForCustomerDisconnect, 2000);
             }
 
             // Initialize the application
             (function initializeApp() {
                 addDebugLine('🚀 Application starting...');
+                
+                // Check if we're resuming from a monitoring session
+                try {
+                    const wasMonitoring = sessionStorage.getItem('tsnMonitoringActive');
+                    const savedConversationId = sessionStorage.getItem('tsnConversationId');
+                    const savedAgentId = sessionStorage.getItem('tsnAgentId');
+                    
+                    if (wasMonitoring === 'true' && savedConversationId && savedAgentId) {
+                        addDebugLine('🔄 Resuming monitoring session after page reload...');
+                        // Clear the session storage
+                        sessionStorage.removeItem('tsnMonitoringActive');
+                        sessionStorage.removeItem('tsnConversationId');
+                        sessionStorage.removeItem('tsnAgentId');
+                        
+                        // Set up polling fallback for this conversation
+                        setupPollingFallback(savedConversationId, savedAgentId);
+                    }
+                } catch (e) {
+                    addDebugLine('⚠️ Could not check sessionStorage for monitoring state');
+                }
                 
                 // First try to get parameters from OAuth callback (hash)
                 let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
@@ -643,16 +736,23 @@
             let originalReload = window.location.reload;
             let originalHref = window.location.href;
 
+            // Store the original href setter
+            let originalHrefDescriptor = Object.getOwnPropertyDescriptor(window.location, 'href') || 
+                                       Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location), 'href');
+
             // Override all location change methods
             Object.defineProperty(window.location, 'href', {
-                get: function() { return originalHref; },
+                get: function() { return window.location.toString(); },
                 set: function(val) {
                     if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
                         addDebugLine('🛑 Blocked location.href change during monitoring');
                         return;
                     }
-                    originalHref = val;
-                    window.location.assign(val);
+                    if (originalHrefDescriptor && originalHrefDescriptor.set) {
+                        originalHrefDescriptor.set.call(window.location, val);
+                    } else {
+                        window.location.assign(val);
+                    }
                 }
             });
 
@@ -680,12 +780,38 @@
                 return originalReload.call(window.location);
             };
 
+            // Block iframe navigation attempts
+            if (window.parent !== window) {
+                addDebugLine('ℹ️ Running in iframe - setting up parent navigation blocks');
+                try {
+                    // Try to block parent frame navigation
+                    window.parent.addEventListener('beforeunload', function(event) {
+                        if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
+                            addDebugLine('🛑 Blocked parent frame navigation during monitoring');
+                            event.preventDefault();
+                            event.stopImmediatePropagation();
+                        }
+                    });
+                } catch (e) {
+                    addDebugLine('⚠️ Cannot access parent frame - cross-origin restrictions');
+                }
+            }
+
             // Monitor for page unload but just log it
             window.addEventListener('beforeunload', function(event) {
                 addDebugLine(`⚠️ Page unload detected - Reason: ${event.type} - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
                 
                 if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
                     addDebugLine('⚠️ Page unload during monitoring - WebSocket may be lost');
+                    // Try to save monitoring state to sessionStorage as backup
+                    try {
+                        sessionStorage.setItem('tsnMonitoringActive', 'true');
+                        sessionStorage.setItem('tsnConversationId', conversationId);
+                        sessionStorage.setItem('tsnAgentId', agentParticipantId);
+                        addDebugLine('💾 Saved monitoring state to sessionStorage');
+                    } catch (e) {
+                        addDebugLine('⚠️ Could not save to sessionStorage');
+                    }
                 }
                 // Don't prevent - just log
             });
