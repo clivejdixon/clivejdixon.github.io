@@ -36,6 +36,8 @@
             const SPEAK_TO_FINAL = 'CONFERENCE';
             const WAITTIME = 1000;
             const WEBSOCKET_SETUP_DELAY = 20000; // Configurable WebSocket setup delay
+            const MAX_WEBSOCKET_RECONNECT_ATTEMPTS = 5;
+            const WEBSOCKET_RECONNECT_DELAY = 2000; // 2 seconds between reconnect attempts
 
 
             // Global variables
@@ -43,6 +45,8 @@
             let notificationChannelId = null;
             let isMonitoringParticipants = false;
             let sequenceRunning = false;
+            let websocketReconnectAttempts = 0;
+            let isPageUpdateDetected = false;
             
             // Global parameters that will be set after authentication
             let gToken = null;
@@ -76,7 +80,7 @@
                 }
                 
                 sequenceRunning = true;
-                console.log('[DEBUG] 🚀 56 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 57 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -349,50 +353,23 @@
                     websocket.onclose = function(event) {
                         console.log(`[DEBUG] 🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
                         
-                        // If we're still monitoring and the close wasn't intentional, try to reconnect
-                        if (isMonitoringParticipants && event.code !== 1000) {
-                            console.log('[DEBUG] 🔄 Unexpected WebSocket closure - attempting reconnect in 5 seconds...');
-                            setTimeout(async () => {
-                                if (isMonitoringParticipants) {
-                                    console.log('[DEBUG] 🔄 Attempting WebSocket reconnection...');
-                                    try {
-                                        await setupWebSocketNotifications();
-                                    } catch (error) {
-                                        console.log(`[DEBUG] ❌ WebSocket reconnection failed: ${error.message}`);
-                                    }
-                                }
-                            }, 5000);
+                         // Only attempt reconnect if not a page update and monitoring is active
+                        if (!isPageUpdateDetected && isMonitoringParticipants) {
+                            detectUnexpectedWebSocketClose(event);
                         }
                     };
-                    
+        
                     // Wait a bit for connection to establish
                     await sleep(2000);
-                    
+        
                     if (websocket.readyState === WebSocket.OPEN) {
                         console.log('[DEBUG] 🎯 WebSocket setup completed successfully');
-                        
-                        // Set up periodic heartbeat to keep connection alive
-                        const heartbeatInterval = setInterval(() => {
-                            if (websocket && websocket.readyState === WebSocket.OPEN && isMonitoringParticipants) {
-                                try {
-                                    websocket.send(JSON.stringify({type: 'heartbeat', timestamp: new Date().toISOString()}));
-                                    console.log('[DEBUG] 💓 Sent heartbeat to WebSocket');
-                                } catch (error) {
-                                    console.log(`[DEBUG] ❌ Heartbeat failed: ${error.message}`);
-                                    clearInterval(heartbeatInterval);
-                                }
-                            } else {
-                                clearInterval(heartbeatInterval);
-                                console.log('[DEBUG] 💓 Stopped heartbeat - monitoring ended or connection closed');
-                            }
-                        }, 30000); // Send heartbeat every 30 seconds
-                        
                         return true;
                     } else {
                         console.log(`[DEBUG] ⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
                         return false;
                     }
-                    
+        
                 } catch (error) {
                     console.error('❌ WebSocket setup failed:', error);
                     return false;
@@ -458,15 +435,77 @@
                 }
             }
 
-            function cleanupWebSocket() {
+            // Detect page update or unload
+            window.addEventListener('beforeunload', function() {
+                isPageUpdateDetected = true;
+                console.log('[DEBUG] 🚨 Page update or unload detected');
+                cleanupWebSocket(true);
+            });
+
+async function detectUnexpectedWebSocketClose(error) {
+    console.log('[DEBUG] 🔍 Detecting unexpected WebSocket close...');
+    
+    // Check if page update was detected
+    if (isPageUpdateDetected) {
+        console.log('[DEBUG] ✅ Page update confirmed - suppressing automatic reconnect');
+        return;
+    }
+    
+    // Increment reconnect attempts
+    websocketReconnectAttempts++;
+    
+    // Check if we've exceeded max reconnect attempts
+    if (websocketReconnectAttempts > MAX_WEBSOCKET_RECONNECT_ATTEMPTS) {
+        console.log('[DEBUG] ❌ Max WebSocket reconnect attempts reached');
+        isMonitoringParticipants = false;
+        return;
+    }
+    
+    console.log(`[DEBUG] 🔄 Attempting WebSocket reconnect (Attempt ${websocketReconnectAttempts})`);
+    
+    try {
+        // Wait before attempting reconnect
+        await new Promise(resolve => setTimeout(resolve, WEBSOCKET_RECONNECT_DELAY));
+        
+        // Attempt to set up WebSocket again
+        const reconnectSuccess = await setupWebSocketNotifications();
+        
+        if (reconnectSuccess) {
+            console.log('[DEBUG] ✅ WebSocket successfully reconnected');
+            websocketReconnectAttempts = 0; // Reset reconnect attempts
+        } else {
+            throw new Error('WebSocket reconnection failed');
+        }
+    } catch (reconnectError) {
+        console.log(`[DEBUG] ❌ WebSocket reconnection failed: ${reconnectError.message}`);
+        
+        // If reconnection fails, stop monitoring
+        isMonitoringParticipants = false;
+    }
+}
+            
+            function cleanupWebSocket(isPageUpdate = false) {
                 console.log('[DEBUG] 🧹 Cleaning up WebSocket...');
                 if (websocket) {
+                   // Remove event listeners to prevent multiple handlers
+                    websocket.onclose = null;
+                    websocket.onerror = null;
+                    websocket.onmessage = null;
+        
+                    // Close the WebSocket connection
                     websocket.close();
                     websocket = null;
-                    console.log('[DEBUG] 🧹 WebSocket cleaned up');
                 }
+                // Reset monitoring flags
                 isMonitoringParticipants = false;
                 sequenceRunning = false;
+
+                // Reset page update flag after a short delay
+                if (isPageUpdate) {
+                setTimeout(() => {
+                    isPageUpdateDetected = false;
+                    }, 1000);
+                }
             }
 
             // Initialize the application
