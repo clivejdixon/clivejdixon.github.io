@@ -73,7 +73,7 @@
 
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 69');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 70');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
@@ -97,7 +97,7 @@
                 sequenceRunning = true;
                 // updateButton('Processing...', false);
                 // updateStatus('Starting TSN Reset sequence...', 'status-processing');
-                console.log('[DEBUG] 🚀 69 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 70 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -144,23 +144,13 @@
                                 'STEP 3: Placing agent on hold'
                             );
 
-                            // Setup EventBridge notifications AFTER agent is on hold
-                            console.log('[DEBUG] 🌉 Setting up EventBridge monitoring after agent on hold...');
-                            const eventBridgeSetupSuccess = await setupEventBridgeMonitoring();
-
-                            if (eventBridgeSetupSuccess) {
-                                isMonitoringParticipants = true;
-                                console.log('[DEBUG] 👁️ Now monitoring for customer disconnections via EventBridge...');
-                                // updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
-                                // updateButton('Monitoring Active', false);
-                                startCustomerMonitoring();
-                            } else {
-                                console.log('[DEBUG] ⚠️ EventBridge monitoring unavailable - sequence completed');
-                                // updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
-                                // updateButton('TSN Reset (Conference)', true);
-                            }
+                            // Wait a bit for connection to establish
+                            await sleep(58000);
+                            console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
+                            // Poll every 2 seconds
+                            setInterval(checkParticipantCount, 2000);
                             
-                            return; // Exit early since we've completed the sequence
+                                return; // Exit early since we've completed the sequence
                         } catch (fallbackError) {
                             console.log('[DEBUG] ❌ Both Step 1a and 1b failed');
                             throw fallbackError;
@@ -222,8 +212,8 @@
                     // Poll every 2 seconds
                     setInterval(checkParticipantCount, 2000);
                     // Setup EventBridge monitoring AFTER agent is on hold
-                    console.log('[DEBUG] 🌉 Setting up EventBridge monitoring after agent on hold...');
-                    const eventBridgeSetupSuccess = await setupEventBridgeMonitoring();
+                    // console.log('[DEBUG] 🌉 Setting up EventBridge monitoring after agent on hold...');
+                    //const eventBridgeSetupSuccess = await setupEventBridgeMonitoring();
 
                                         
                 } catch (error) {
