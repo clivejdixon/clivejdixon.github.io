@@ -35,8 +35,7 @@
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
             const WAITTIME = 1000;
-            // Add a configurable constant for WebSocket delay
-            const WEBSOCKET_SETUP_DELAY = 5000; // 5 seconds, configurable
+            const WEBSOCKET_SETUP_DELAY = 5000; // Configurable WebSocket setup delay
 
 
             // Global variables
@@ -77,7 +76,7 @@
                 }
                 
                 sequenceRunning = true;
-                console.log('[DEBUG] 🚀 54 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 55 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -201,7 +200,10 @@
                         },
                         'STEP 3: Placing agent on hold'
                     );
-
+                    // Add a delay before WebSocket setup
+                    console.log(`[DEBUG]🕒 Waiting ${WEBSOCKET_SETUP_DELAY/1000} seconds before WebSocket setup...`);
+                    await sleep(WEBSOCKET_SETUP_DELAY);
+                    
                     // Setup WebSocket notifications AFTER agent is on hold
                     console.log('[DEBUG] 🔌 Setting up WebSocket notifications after agent on hold...');
                     const websocketSetupSuccess = await setupWebSocketNotifications();
