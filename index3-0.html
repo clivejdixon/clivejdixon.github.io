@@ -84,7 +84,7 @@
                     console.log('[DEBUG] ❌ customerParticipantId:', customerParticipantId);
                     console.log('[DEBUG] ❌ consultingUserId:', consultingUserId);
                     console.log('[DEBUG] ❌ gToken:', gToken);
-                    updateStatus('Error: Missing parameters', 'status-error');
+                    // updateStatus('Error: Missing parameters', 'status-error');
                     return;
                 }
                 
@@ -95,9 +95,9 @@
                 }
                 
                 sequenceRunning = true;
-                updateButton('Processing...', false);
-                updateStatus('Starting TSN Reset sequence...', 'status-processing');
-                console.log('[DEBUG] 🚀 66 Starting TSN Reset sequence...');
+                // updateButton('Processing...', false);
+                // updateStatus('Starting TSN Reset sequence...', 'status-processing');
+                console.log('[DEBUG] 🚀 67 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -151,13 +151,13 @@
                             if (eventBridgeSetupSuccess) {
                                 isMonitoringParticipants = true;
                                 console.log('[DEBUG] 👁️ Now monitoring for customer disconnections via EventBridge...');
-                                updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
-                                updateButton('Monitoring Active', false);
+                                // updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
+                                // updateButton('Monitoring Active', false);
                                 startCustomerMonitoring();
                             } else {
                                 console.log('[DEBUG] ⚠️ EventBridge monitoring unavailable - sequence completed');
-                                updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
-                                updateButton('TSN Reset (Conference)', true);
+                                // updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
+                                // updateButton('TSN Reset (Conference)', true);
                             }
                             
                             return; // Exit early since we've completed the sequence
@@ -225,21 +225,21 @@
                         isMonitoringParticipants = true;
                         console.log('[DEBUG] 👁️ Now monitoring for customer disconnections via EventBridge...');
                         console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
-                        updateButton('Monitoring Active', false);
+                        //updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
+                        // updateButton('Monitoring Active', false);
                         startCustomerMonitoring();
                     } else {
                         console.log('[DEBUG] ⚠️ EventBridge monitoring unavailable - sequence completed');
                         console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
+                        // updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
                         updateButton('TSN Reset (Conference)', true);
                     }
                     
                 } catch (error) {
                     console.error("[DEBUG] Sequence error:", error);
                     console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                    updateStatus(`Error: ${error.responseText || error.message}`, 'status-error');
-                    updateButton('TSN Reset (Conference)', true);
+                    // updateStatus(`Error: ${error.responseText || error.message}`, 'status-error');
+                    // updateButton('TSN Reset (Conference)', true);
                 } finally {
                     // Always reset the sequence running flag
                     sequenceRunning = false;
@@ -318,15 +318,15 @@
                         }
                         
                         // Update UI with poll count
-                        updateStatus(`Agent on hold - Monitoring (${pollCount}/${maxPolls})`, 'status-monitoring');
+                        // updateStatus(`Agent on hold - Monitoring (${pollCount}/${maxPolls})`, 'status-monitoring');
                         
                         // Continue polling if we haven't reached max polls
                         if (pollCount >= maxPolls) {
                             console.log('[DEBUG] ⚠️ Polling timeout reached - stopping monitoring');
                             clearInterval(monitoringInterval);
                             isMonitoringParticipants = false;
-                            updateStatus('Monitoring timeout reached', 'status-error');
-                            updateButton('TSN Reset (Conference)', true);
+                            // updateStatus('Monitoring timeout reached', 'status-error');
+                            // updateButton('TSN Reset (Conference)', true);
                         }
                         
                     } catch (error) {
@@ -334,8 +334,8 @@
                         if (pollCount >= maxPolls) {
                             clearInterval(monitoringInterval);
                             isMonitoringParticipants = false;
-                            updateStatus('Monitoring error - stopped', 'status-error');
-                            updateButton('TSN Reset (Conference)', true);
+                            // updateStatus('Monitoring error - stopped', 'status-error');
+                            // updateButton('TSN Reset (Conference)', true);
                         }
                     }
                 }, 5000); // Poll every 5 seconds
@@ -343,7 +343,7 @@
 
             async function takeAgentOffHold() {
                 try {
-                    updateStatus('Taking agent off hold...', 'status-processing');
+                    // updateStatus('Taking agent off hold...', 'status-processing');
                     
                     await makeApiCall(
                         `${BASE_API_URL}/participants/${agentParticipantId}`,
@@ -355,8 +355,8 @@
                     );
                     
                     console.log('[DEBUG] 🎉 Agent taken off hold - TSN Reset sequence complete!');
-                    updateStatus('✅ TSN Reset completed - Agent off hold', 'status-complete');
-                    updateButton('TSN Reset (Conference)', true);
+                    // updateStatus('✅ TSN Reset completed - Agent off hold', 'status-complete');
+                    // updateButton('TSN Reset (Conference)', true);
                     
                     // Clean up monitoring
                     setTimeout(() => {
@@ -365,8 +365,8 @@
                     
                 } catch (error) {
                     console.error("[DEBUG] ❌ Error taking agent off hold:", error);
-                    updateStatus('Error taking agent off hold', 'status-error');
-                    updateButton('TSN Reset (Conference)', true);
+                    // updateStatus('Error taking agent off hold', 'status-error');
+                    // updateButton('TSN Reset (Conference)', true);
                 }
             }
 
@@ -462,7 +462,7 @@
                 // If no token, we need to start OAuth flow
                 if (!token) {
                     console.log('[DEBUG] 🔑 No token found, checking URL parameters...');
-                    updateStatus('No authentication token found', 'status-loading');
+                    // updateStatus('No authentication token found', 'status-loading');
                     
                     // Get parameters from URL
                     const urlParams = getParametersFromUrl();
@@ -470,7 +470,7 @@
                     if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
                         const errorMsg = "Missing parameters in the URL. Cannot continue.";
                         console.log(`[DEBUG] ❌ ${errorMsg}`);
-                        updateStatus('Error: Missing URL parameters', 'status-error');
+                        // updateStatus('Error: Missing URL parameters', 'status-error');
                         alert(errorMsg);
                         return;
                     }
@@ -483,7 +483,7 @@
                         consultingUserId: urlParams.consultingUserId                
                     }));
                     console.log("[DEBUG] 🔄 Redirecting to OAuth...");
-                    updateStatus('Redirecting to authentication...', 'status-loading');
+                    // updateStatus('Redirecting to authentication...', 'status-loading');
 
                     const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
                         $.param({
@@ -502,7 +502,7 @@
                     if (!convId || !agentId || !customerId || !consultId) {
                         const errorMsg = "Missing parameters in OAuth callback. Cannot continue.";
                         console.log(`[DEBUG] ❌ ${errorMsg}`);
-                        updateStatus('Error: Missing OAuth parameters', 'status-error');
+                        // updateStatus('Error: Missing OAuth parameters', 'status-error');
                         alert(errorMsg);
                         return;
                     }
@@ -522,8 +522,8 @@
                     console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
                     
                     // Update UI to ready state
-                    updateStatus('Ready for TSN Reset', 'status-ready');
-                    updateButton('TSN Reset (Conference)', true);
+                    // updateStatus('Ready for TSN Reset', 'status-ready');
+                    // updateButton('TSN Reset (Conference)', true);
                     // showConversationInfo();
                     
                     // Clear hash to prevent re-processing
