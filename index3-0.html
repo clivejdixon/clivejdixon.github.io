@@ -52,7 +52,7 @@
 
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 71a');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 72');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
@@ -74,7 +74,7 @@
                 
                 sequenceRunning = true;
 
-                console.log('[DEBUG] 🚀 71 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 72 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -373,6 +373,12 @@
             (function initializeApp() {
                 console.log('[DEBUG] 🚀 Application starting...');
                 
+                // Check if we already have global variables set (to prevent re-initialization)
+                if (gToken && conversationId && agentParticipantId && customerParticipantId && consultingUserId) {
+                    console.log('[DEBUG] ℹ️ Already initialized, skipping auth flow');
+                    return;
+                }
+                
                 // First try to get parameters from OAuth callback (hash)
                 let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
 
@@ -390,6 +396,12 @@
                         return;
                     }
 
+                    // Check if we're already in the middle of OAuth (to prevent loops)
+                    if (window.location.href.includes('oauth_redirect_in_progress')) {
+                        console.log('[DEBUG] ⚠️ OAuth redirect already in progress, waiting...');
+                        return;
+                    }
+
                     // Store parameters in state for OAuth flow
                     const state = btoa(JSON.stringify({
                         conversationId: urlParams.conversationId,
@@ -403,7 +415,7 @@
                         $.param({
                             response_type: 'token',
                             client_id: CLIENT_ID,
-                            redirect_uri: REDIRECT_URI,
+                            redirect_uri: REDIRECT_URI + '?oauth_redirect_in_progress=true',
                             state: state
                         });
                     
@@ -434,9 +446,10 @@
                     console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
                     console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
                                         
-                    // Clear hash to prevent re-processing
+                    // Clear hash to prevent re-processing, but keep URL params
                     if (window.location.hash) {
-                        window.history.replaceState(null, null, window.location.pathname + window.location.search);
+                        const newUrl = window.location.pathname + window.location.search.replace('oauth_redirect_in_progress=true', '').replace('?&', '?').replace('&&', '&');
+                        window.history.replaceState(null, null, newUrl);
                     }
                 }
             })();
