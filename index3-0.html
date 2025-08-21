@@ -73,7 +73,7 @@
 
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 67');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 68');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
@@ -97,7 +97,7 @@
                 sequenceRunning = true;
                 // updateButton('Processing...', false);
                 // updateStatus('Starting TSN Reset sequence...', 'status-processing');
-                console.log('[DEBUG] 🚀 67 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 68 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -392,37 +392,55 @@
                 const params = new URLSearchParams(hash);
                 const token = params.get('access_token');
                 const state = params.get('state');
-                console.log("[DEBUG] Received state:", state);
-                let conversationId = null;
-                let agentParticipantId = null;
-                let customerParticipantId = null;
-                let consultingUserId = null;
+
+                console.log('[DEBUG] OAuth Callback Details:', {
+                    hasHash: !!window.location.hash,
+                    token: token ? 'Present' : 'Missing',
+                    state: state || 'No state found'
+                });
 
                 if (state) {
                     try {
-                        const decodedState = decodeURIComponent(state);
-                        const parsed = JSON.parse(atob(decodedState));
-                        conversationId = parsed.conversationId;
-                        agentParticipantId = parsed.agentParticipantId;
-                        customerParticipantId = parsed.customerParticipantId;
-                        consultingUserId = parsed.consultingUserId;
-                        console.log("[DEBUG] Parsed from state:", parsed);
-                    } catch (e) {
-                        console.error("[DEBUG] Error decoding state:", e);
-                    }
-                }
+                     const decodedState = decodeURIComponent(state);
+                     const parsed = JSON.parse(atob(decodedState));
+            
+                     console.log('[DEBUG] Decoded State:', {
+                         conversationId: parsed.conversationId,
+                            agentParticipantId: parsed.agentParticipantId,
+                            customerParticipantId: parsed.customerParticipantId,
+                         consultingUserId: parsed.consultingUserId
+                        });
 
-                return { token, conversationId, agentParticipantId, customerParticipantId, consultingUserId };
+                        return {
+                            token, 
+                            conversationId: parsed.conversationId,
+                            agentParticipantId: parsed.agentParticipantId,
+                         customerParticipantId: parsed.customerParticipantId,
+                            consultingUserId: parsed.consultingUserId
+                        };
+                    } catch (e) {
+                     console.error('[DEBUG] State Decoding Error:', e);
+                 }
+             }
+
+                return { token: null };
             }
 
             function getParametersFromUrl() {
                 const urlParams = new URLSearchParams(window.location.search);
-                return {
-                    conversationId: urlParams.get('conversationId'),
-                    agentParticipantId: urlParams.get('agentParticipantId'),
-                    customerParticipantId: urlParams.get('customerParticipantId'),
-                    consultingUserId: urlParams.get('consultingUserId')
+                const params = {
+                conversationId: urlParams.get('conversationId'),
+                agentParticipantId: urlParams.get('agentParticipantId'),
+                customerParticipantId: urlParams.get('customerParticipantId'),
+                consultingUserId: urlParams.get('consultingUserId')
                 };
+
+                console.log('[DEBUG] Raw URL Parameters:', {
+                    fullSearch: window.location.search,
+                    parsedParams: params
+                });
+
+                return params;
             }
 
             function sleep(ms) {
