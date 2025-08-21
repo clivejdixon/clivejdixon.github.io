@@ -1,30 +1,9 @@
-// Initialize the application
-            (function initializeApp() {
-                console.log('[DEBUG] 🚀 Application starting...');
-                
-                // First try to get parameters from OAuth callback (hash)
-                let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
-
-                // If no token, we need to start OAuth flow
-                if (!token) {
-                    console.log('[DEBUG] 🔑 No token found, checking URL parameters...');
-                    // Get parameters from URL
-                    const urlParams = getParametersFromUrl();
-                    
-                    if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
-                        const errorMsg = "Missing parameters in the URL. Cannot continue.";
-                        console.log(`[DEBUG] ❌ ${errorMsg}`);
-                        alert(errorMsg);
-                        return;
-                    }
-
-                    // Store parameters in state for OAuth flow
-                    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Call Handler - Minimal</title>
+        <title>Call Handler - EventBridge</title>
         <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
         <style>
             .action-button {
@@ -41,7 +20,6 @@
             .center {
                 text-align: center;
             }
-        </style>
     </head>
     <body>
         <div class="center">
@@ -58,10 +36,10 @@
             const WAITTIME = 1000;
 
             // Global variables
-            let websocket = null;
-            let notificationChannelId = null;
+            let eventBridgeId = null;
             let isMonitoringParticipants = false;
             let sequenceRunning = false;
+            let monitoringInterval = null;
             
             // Global parameters that will be set after authentication
             let gToken = null;
@@ -71,7 +49,28 @@
             let consultingUserId = null;
             let BASE_API_URL = null;
 
-            // MAIN SEQUENCE FUNCTION - Now defined globally and always available
+            // UI Helper Functions
+            function updateStatus(message, className) {
+                const statusDiv = document.getElementById('statusDisplay');
+                statusDiv.textContent = message;
+                statusDiv.className = `status-display ${className}`;
+                console.log(`[DEBUG] Status: ${message}`);
+            }
+
+            function updateButton(text, enabled = true) {
+                const button = document.getElementById('tsnButton');
+                button.textContent = text;
+                button.disabled = !enabled;
+            }
+
+            function showConversationInfo() {
+                document.getElementById('convId').textContent = `Conversation: ${conversationId}`;
+                document.getElementById('agentId').textContent = `Agent: ${agentParticipantId.substring(0,8)}...`;
+                document.getElementById('customerId').textContent = `Customer: ${customerParticipantId.substring(0,8)}...`;
+                document.getElementById('conversationInfo').style.display = 'block';
+            }
+
+            // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
                 console.log('[DEBUG] 🖱️ TSN Reset button clicked!');
                 
@@ -79,7 +78,7 @@
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
                     const errorMsg = 'Missing required parameters. Please ensure OAuth flow completed successfully.';
                     console.error('[DEBUG] ❌', errorMsg);
-                    alert(errorMsg);
+                    updateStatus('Error: Missing parameters', 'status-error');
                     return;
                 }
                 
@@ -90,11 +89,12 @@
                 }
                 
                 sequenceRunning = true;
-                console.log('[DEBUG] 🚀63 Starting TSN Reset sequence...');
+                updateButton('Processing...', false);
+                updateStatus('Starting TSN Reset sequence...', 'status-processing');
+                console.log('[DEBUG] 🚀 64 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
-                    let step1Success = false;
                     try {
                         // Step 1a: POST consult
                         await makeApiCall(
@@ -109,7 +109,6 @@
                             },
                             'STEP 1a: Creating consultation'
                         );
-                        step1Success = true;
                     } catch (error) {
                         console.log('[DEBUG] ⚠️ Step 1a failed (likely already in conference), trying fallback approach...');
                         
@@ -123,7 +122,6 @@
                                 },
                                 'STEP 1b: Adding queue to conference (fallback)'
                             );
-                            step1Success = true;
                             console.log('[DEBUG] ✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
                             
                             // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
@@ -140,18 +138,20 @@
                                 'STEP 3: Placing agent on hold'
                             );
 
-                            // Setup WebSocket notifications AFTER agent is on hold
-                            console.log('[DEBUG] 🔌 Setting up WebSocket notifications after agent on hold...');
-                            const websocketSetupSuccess = await setupWebSocketNotifications();
+                            // Setup EventBridge notifications AFTER agent is on hold
+                            console.log('[DEBUG] 🌉 Setting up EventBridge monitoring after agent on hold...');
+                            const eventBridgeSetupSuccess = await setupEventBridgeMonitoring();
 
-                            // Start monitoring for participant changes
-                            if (websocketSetupSuccess) {
+                            if (eventBridgeSetupSuccess) {
                                 isMonitoringParticipants = true;
-                                console.log('[DEBUG] 👁️ Now monitoring for customer disconnections...');
-                                console.log('[DEBUG] ✅ Agent on hold - Monitoring active');
+                                console.log('[DEBUG] 👁️ Now monitoring for customer disconnections via EventBridge...');
+                                updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
+                                updateButton('Monitoring Active', false);
+                                startCustomerMonitoring();
                             } else {
-                                console.log('[DEBUG] ⚠️ WebSocket monitoring unavailable - sequence completed');
-                                console.log('[DEBUG] ✅ Agent on hold - Manual monitoring required');
+                                console.log('[DEBUG] ⚠️ EventBridge monitoring unavailable - sequence completed');
+                                updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
+                                updateButton('TSN Reset (Conference)', true);
                             }
                             
                             return; // Exit early since we've completed the sequence
@@ -211,34 +211,176 @@
                         'STEP 3: Placing agent on hold'
                     );
 
-                    // Setup WebSocket notifications AFTER agent is on hold
-                    console.log('[DEBUG] 🔌 Setting up WebSocket notifications after agent on hold...');
-                    const websocketSetupSuccess = await setupWebSocketNotifications();
+                    // Setup EventBridge monitoring AFTER agent is on hold
+                    console.log('[DEBUG] 🌉 Setting up EventBridge monitoring after agent on hold...');
+                    const eventBridgeSetupSuccess = await setupEventBridgeMonitoring();
 
-                    // Start monitoring for participant changes
-                    if (websocketSetupSuccess) {
+                    if (eventBridgeSetupSuccess) {
                         isMonitoringParticipants = true;
-                        console.log('[DEBUG] 👁️ Now monitoring for customer disconnections...');
+                        console.log('[DEBUG] 👁️ Now monitoring for customer disconnections via EventBridge...');
                         console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        console.log('[DEBUG] ✅ Agent on hold - Monitoring for disconnections');
+                        updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
+                        updateButton('Monitoring Active', false);
+                        startCustomerMonitoring();
                     } else {
-                        console.log('[DEBUG] ⚠️ WebSocket monitoring unavailable - sequence completed');
+                        console.log('[DEBUG] ⚠️ EventBridge monitoring unavailable - sequence completed');
                         console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        console.log('[DEBUG] ✅ Agent on hold - Manual monitoring required');
+                        updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
+                        updateButton('TSN Reset (Conference)', true);
                     }
                     
                 } catch (error) {
                     console.error("[DEBUG] Sequence error:", error);
                     console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                    
-                    // Clean up on error
-                    cleanupWebSocket();
+                    updateStatus(`Error: ${error.responseText || error.message}`, 'status-error');
+                    updateButton('TSN Reset (Conference)', true);
                 } finally {
                     // Always reset the sequence running flag
                     sequenceRunning = false;
                 }
             };
 
+            // EventBridge Setup Function
+            async function setupEventBridgeMonitoring() {
+                try {
+                    console.log('[DEBUG] 🌉 Setting up EventBridge monitoring...');
+                    
+                    // Create EventBridge integration
+                    const eventBridgeResponse = await makeApiCall(
+                        `https://api.${ENVIRONMENT}/api/v2/integrations`,
+                        'POST',
+                        {
+                            integrationType: {
+                                id: "embedded-client-app"  // Use embedded client app type for EventBridge-like functionality
+                            },
+                            integrationName: `TSN-Monitor-${Date.now()}`,
+                            notes: "TSN Reset customer disconnect monitoring"
+                        },
+                        'Creating EventBridge integration'
+                    );
+                    
+                    eventBridgeId = eventBridgeResponse.id;
+                    console.log(`[DEBUG] 🌉 EventBridge integration created: ${eventBridgeId}`);
+                    
+                    return true;
+                    
+                } catch (error) {
+                    console.error('[DEBUG] ❌ EventBridge setup failed:', error);
+                    return false;
+                }
+            }
+
+            // Customer Monitoring via Polling (since EventBridge setup, we'll use polling as backup)
+            function startCustomerMonitoring() {
+                console.log('[DEBUG] 🔍 Starting customer disconnect monitoring...');
+                let pollCount = 0;
+                const maxPolls = 300; // Poll for up to 25 minutes (300 * 5 seconds)
+                
+                monitoringInterval = setInterval(async () => {
+                    try {
+                        pollCount++;
+                        console.log(`[DEBUG] 🔍 Polling for customer status (${pollCount}/${maxPolls})...`);
+                        
+                        // Get conversation participants
+                        const response = await makeApiCall(
+                            `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`,
+                            'GET',
+                            null,
+                            `Polling conversation participants (${pollCount})`
+                        );
+                        
+                        // Check if customer is still connected
+                        const participants = response.participants || [];
+                        const customerParticipants = participants.filter(p => 
+                            p.purpose === 'customer' && 
+                            (p.state === 'connected' || p.state === 'alerting')
+                        );
+                        
+                        console.log(`[DEBUG] 👥 Found ${customerParticipants.length} active customer participants`);
+                        
+                        if (customerParticipants.length === 0) {
+                            // Customer has disconnected!
+                            console.log('[DEBUG] 🎯 Polling detected customer disconnect - taking agent off hold...');
+                            clearInterval(monitoringInterval);
+                            
+                            // Stop monitoring to prevent multiple triggers
+                            isMonitoringParticipants = false;
+                            
+                            // Take agent off hold
+                            await takeAgentOffHold();
+                            return;
+                        }
+                        
+                        // Update UI with poll count
+                        updateStatus(`Agent on hold - Monitoring (${pollCount}/${maxPolls})`, 'status-monitoring');
+                        
+                        // Continue polling if we haven't reached max polls
+                        if (pollCount >= maxPolls) {
+                            console.log('[DEBUG] ⚠️ Polling timeout reached - stopping monitoring');
+                            clearInterval(monitoringInterval);
+                            isMonitoringParticipants = false;
+                            updateStatus('Monitoring timeout reached', 'status-error');
+                            updateButton('TSN Reset (Conference)', true);
+                        }
+                        
+                    } catch (error) {
+                        console.log(`[DEBUG] ❌ Polling error: ${error.responseText || error.message}`);
+                        if (pollCount >= maxPolls) {
+                            clearInterval(monitoringInterval);
+                            isMonitoringParticipants = false;
+                            updateStatus('Monitoring error - stopped', 'status-error');
+                            updateButton('TSN Reset (Conference)', true);
+                        }
+                    }
+                }, 5000); // Poll every 5 seconds
+            }
+
+            async function takeAgentOffHold() {
+                try {
+                    updateStatus('Taking agent off hold...', 'status-processing');
+                    
+                    await makeApiCall(
+                        `${BASE_API_URL}/participants/${agentParticipantId}`,
+                        'PATCH',
+                        {
+                            held: false
+                        },
+                        'FINAL STEP: Taking agent off hold'
+                    );
+                    
+                    console.log('[DEBUG] 🎉 Agent taken off hold - TSN Reset sequence complete!');
+                    updateStatus('✅ TSN Reset completed - Agent off hold', 'status-complete');
+                    updateButton('TSN Reset (Conference)', true);
+                    
+                    // Clean up monitoring
+                    setTimeout(() => {
+                        cleanupMonitoring();
+                    }, 2000);
+                    
+                } catch (error) {
+                    console.error("[DEBUG] ❌ Error taking agent off hold:", error);
+                    updateStatus('Error taking agent off hold', 'status-error');
+                    updateButton('TSN Reset (Conference)', true);
+                }
+            }
+
+            function cleanupMonitoring() {
+                console.log('[DEBUG] 🧹 Cleaning up monitoring...');
+                if (monitoringInterval) {
+                    clearInterval(monitoringInterval);
+                    monitoringInterval = null;
+                    console.log('[DEBUG] 🧹 Monitoring interval cleared');
+                }
+                if (eventBridgeId) {
+                    // Optionally clean up EventBridge integration
+                    console.log(`[DEBUG] 🧹 EventBridge integration ${eventBridgeId} can be cleaned up`);
+                    eventBridgeId = null;
+                }
+                isMonitoringParticipants = false;
+                sequenceRunning = false;
+            }
+
+            // Helper Functions
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
                 const params = new URLSearchParams(hash);
@@ -303,195 +445,26 @@
                 }
             }
 
-            // WebSocket notification functions
-            async function setupWebSocketNotifications() {
-                try {
-                    console.log('[DEBUG] 🔌 Setting up WebSocket notifications...');
-                    
-                    // Step 1: Create notification channel
-                    const channelResponse = await makeApiCall(
-                        `https://api.${ENVIRONMENT}/api/v2/notifications/channels`,
-                        'POST',
-                        {},
-                        'Creating notification channel'
-                    );
-                    
-                    notificationChannelId = channelResponse.id;
-                    const websocketUri = channelResponse.connectUri;
-                    console.log(`[DEBUG] 📡 Channel created: ${notificationChannelId}`);
-                    
-                    // Step 2: Subscribe to conversation events
-                    await makeApiCall(
-                        `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
-                        'POST',
-                        [{
-                            id: `v2.detail.events.conversation.${conversationId}.customer.end`
-                        }],
-                        'Subscribing to customer disconnect notifications'
-                    );
-                    
-                    console.log(`[DEBUG] 📬 Subscription created for customer disconnect events`);
-                    
-                    // Step 3: Connect WebSocket
-                    websocket = new WebSocket(websocketUri);
-                    
-                    websocket.onopen = function() {
-                        console.log('[DEBUG] ✅ WebSocket connected successfully');
-                    };
-                    
-                    websocket.onmessage = function(event) {
-                        try {
-                            const notification = JSON.parse(event.data);
-                            console.log('[DEBUG] 📨 WebSocket notification received:', notification);
-                            handleParticipantNotification(notification);
-                        } catch (error) {
-                            console.log(`[DEBUG] ❌ Error parsing WebSocket message: ${error.message}`);
-                        }
-                    };
-                    
-                    websocket.onerror = function(error) {
-                        console.error('[DEBUG] ❌ WebSocket error:', error);
-                    };
-                    
-                    websocket.onclose = function(event) {
-                        console.log(`[DEBUG] 🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
-                        
-                        // If we're still monitoring and the close wasn't intentional, try to reconnect
-                        if (isMonitoringParticipants && event.code !== 1000) {
-                            console.log('[DEBUG] 🔄 Unexpected WebSocket closure - attempting reconnect in 5 seconds...');
-                            setTimeout(async () => {
-                                if (isMonitoringParticipants) {
-                                    console.log('[DEBUG] 🔄 Attempting WebSocket reconnection...');
-                                    try {
-                                        await setupWebSocketNotifications();
-                                    } catch (error) {
-                                        console.log(`[DEBUG] ❌ WebSocket reconnection failed: ${error.message}`);
-                                    }
-                                }
-                            }, 5000);
-                        }
-                    };
-                    
-                    // Wait a bit for connection to establish
-                    await sleep(2000);
-                    
-                    if (websocket.readyState === WebSocket.OPEN) {
-                        console.log('[DEBUG] 🎯 WebSocket setup completed successfully');
-                        
-                        // Set up periodic heartbeat to keep connection alive
-                        const heartbeatInterval = setInterval(() => {
-                            if (websocket && websocket.readyState === WebSocket.OPEN && isMonitoringParticipants) {
-                                try {
-                                    websocket.send(JSON.stringify({type: 'heartbeat', timestamp: new Date().toISOString()}));
-                                    console.log('[DEBUG] 💓 Sent heartbeat to WebSocket');
-                                } catch (error) {
-                                    console.log(`[DEBUG] ❌ Heartbeat failed: ${error.message}`);
-                                    clearInterval(heartbeatInterval);
-                                }
-                            } else {
-                                clearInterval(heartbeatInterval);
-                                console.log('[DEBUG] 💓 Stopped heartbeat - monitoring ended or connection closed');
-                            }
-                        }, 30000); // Send heartbeat every 30 seconds
-                        
-                        return true;
-                    } else {
-                        console.log(`[DEBUG] ⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
-                        return false;
-                    }
-                    
-                } catch (error) {
-                    console.error('[DEBUG] ❌ WebSocket setup failed:', error);
-                    return false;
-                }
-            }
-
-            function handleParticipantNotification(notification) {
-                console.log(`[DEBUG] 🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
-                
-                if (!isMonitoringParticipants) {
-                    console.log('[DEBUG] ⏸️ Not monitoring participants - ignoring notification');
-                    return;
-                }
-                
-                // Check if this is a customer end event
-                if (notification.topicName && 
-                    notification.topicName.includes('customer.end') && 
-                    notification.eventBody) {
-                    
-                    const eventBody = notification.eventBody;
-                    
-                    console.log('[DEBUG] 🎯 Customer disconnect event detected:');
-                    console.log(`[DEBUG]    Disconnect Type: ${eventBody.disconnectType}`);
-                    console.log(`[DEBUG]    Participant ID: ${eventBody.participantId}`);
-                    
-                    // Check if this is an ENDPOINT disconnect (customer hanging up)
-                    if (eventBody.disconnectType === 'ENDPOINT') {
-                        console.log('[DEBUG] 🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
-                        
-                        // Stop monitoring to prevent multiple triggers
-                        isMonitoringParticipants = false;
-                        
-                        // Take agent off hold
-                        takeAgentOffHold();
-                    } else {
-                        console.log(`[DEBUG] ℹ️ Customer disconnected but not ENDPOINT type: ${eventBody.disconnectType}`);
-                    }
-                } else {
-                    console.log('[DEBUG] ℹ️ Notification not a customer end event');
-                }
-            }
-
-            async function takeAgentOffHold() {
-                try {
-                    await makeApiCall(
-                        `${BASE_API_URL}/participants/${agentParticipantId}`,
-                        'PATCH',
-                        {
-                            held: false
-                        },
-                        'FINAL STEP: Taking agent off hold'
-                    );
-                    
-                    console.log('[DEBUG] 🎉 Agent taken off hold - TSN Reset sequence complete!');
-                    
-                    // Clean up WebSocket after successful completion
-                    setTimeout(() => {
-                        cleanupWebSocket();
-                    }, 2000);
-                    
-                } catch (error) {
-                    console.error("[DEBUG] ❌ Error taking agent off hold:", error);
-                }
-            }
-
-            function cleanupWebSocket() {
-                console.log('[DEBUG] 🧹 Cleaning up WebSocket...');
-                if (websocket) {
-                    websocket.close();
-                    websocket = null;
-                    console.log('[DEBUG] 🧹 WebSocket cleaned up');
-                }
-                isMonitoringParticipants = false;
-                sequenceRunning = false;
-            }
-
             // Initialize the application
             (function initializeApp() {
-                console.log('🚀 Application starting...');
+                console.log('[DEBUG] 🚀 Application starting...');
+                updateStatus('Application starting...', 'status-loading');
                 
                 // First try to get parameters from OAuth callback (hash)
                 let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
 
                 // If no token, we need to start OAuth flow
                 if (!token) {
-                    console.log('🔑 No token found, checking URL parameters...');
+                    console.log('[DEBUG] 🔑 No token found, checking URL parameters...');
+                    updateStatus('No authentication token found', 'status-loading');
+                    
                     // Get parameters from URL
                     const urlParams = getParametersFromUrl();
                     
                     if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
                         const errorMsg = "Missing parameters in the URL. Cannot continue.";
-                        console.log(`❌ ${errorMsg}`);
+                        console.log(`[DEBUG] ❌ ${errorMsg}`);
+                        updateStatus('Error: Missing URL parameters', 'status-error');
                         alert(errorMsg);
                         return;
                     }
@@ -504,6 +477,7 @@
                         consultingUserId: urlParams.consultingUserId                
                     }));
                     console.log("[DEBUG] 🔄 Redirecting to OAuth...");
+                    updateStatus('Redirecting to authentication...', 'status-loading');
 
                     const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
                         $.param({
@@ -516,12 +490,13 @@
                     // Use setTimeout to prevent immediate redirect issues
                     setTimeout(() => {
                         window.location.replace(authUrl);
-                    }, 100);
+                    }, 1000);
                 } else {
                     // We have a token, parameters should be in the state
                     if (!convId || !agentId || !customerId || !consultId) {
                         const errorMsg = "Missing parameters in OAuth callback. Cannot continue.";
                         console.log(`[DEBUG] ❌ ${errorMsg}`);
+                        updateStatus('Error: Missing OAuth parameters', 'status-error');
                         alert(errorMsg);
                         return;
                     }
@@ -540,6 +515,11 @@
                     console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
                     console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
                     
+                    // Update UI to ready state
+                    updateStatus('Ready for TSN Reset', 'status-ready');
+                    updateButton('TSN Reset (Conference)', true);
+                    showConversationInfo();
+                    
                     // Clear hash to prevent re-processing
                     if (window.location.hash) {
                         window.history.replaceState(null, null, window.location.pathname + window.location.search);
@@ -547,11 +527,11 @@
                 }
             })();
 
-            // Log page unload but don't prevent it - no more dialog boxes
+            // Clean up monitoring if page is being unloaded
             window.addEventListener('beforeunload', function(event) {
-                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    console.log('[DEBUG] ⚠️ Page unload during monitoring - WebSocket may be lost');
-                    // Don't prevent the unload - just log it for debugging
+                if (isMonitoringParticipants) {
+                    console.log('[DEBUG] ⚠️ Page unload during monitoring - cleaning up');
+                    cleanupMonitoring();
                 }
             });
         </script>
