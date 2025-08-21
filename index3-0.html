@@ -35,7 +35,7 @@
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
             const WAITTIME = 1000;
-            const WEBSOCKET_SETUP_DELAY = 5000; // Configurable WebSocket setup delay
+            const WEBSOCKET_SETUP_DELAY = 20000; // Configurable WebSocket setup delay
 
 
             // Global variables
@@ -76,7 +76,7 @@
                 }
                 
                 sequenceRunning = true;
-                console.log('[DEBUG] 🚀 55 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 56 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
