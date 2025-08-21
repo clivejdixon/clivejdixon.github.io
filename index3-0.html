@@ -73,7 +73,7 @@
 
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 68');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 69');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
@@ -97,7 +97,7 @@
                 sequenceRunning = true;
                 // updateButton('Processing...', false);
                 // updateStatus('Starting TSN Reset sequence...', 'status-processing');
-                console.log('[DEBUG] 🚀 68 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 69 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -465,7 +465,15 @@
                     return response;
                 } catch (error) {
                     console.error(`[DEBUG] ❌ ${description} - ERROR:`, error);
-                    throw error;
+                    // Enhanced error logging
+                    console.error(`[DEBUG] ❌ ${description} - ERROR:`, {
+                        status: error.status,
+                     statusText: error.statusText,
+                     responseText: error.responseText,
+                     readyState: error.readyState,
+                     responseHeaders: error.getAllResponseHeaders()
+                 });
+                 throw error;
                 }
             }
 
