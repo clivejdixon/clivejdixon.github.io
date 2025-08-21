@@ -216,25 +216,16 @@
                         },
                         'STEP 3: Placing agent on hold'
                     );
-
+                    // Wait a bit for connection to establish
+                    await sleep(58000);
+                    console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
+                    // Poll every 2 seconds
+                    setInterval(checkParticipantCount, 2000);
                     // Setup EventBridge monitoring AFTER agent is on hold
                     console.log('[DEBUG] 🌉 Setting up EventBridge monitoring after agent on hold...');
                     const eventBridgeSetupSuccess = await setupEventBridgeMonitoring();
 
-                    if (eventBridgeSetupSuccess) {
-                        isMonitoringParticipants = true;
-                        console.log('[DEBUG] 👁️ Now monitoring for customer disconnections via EventBridge...');
-                        console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        //updateStatus('Agent on hold - Monitoring for customer disconnection', 'status-monitoring');
-                        // updateButton('Monitoring Active', false);
-                        startCustomerMonitoring();
-                    } else {
-                        console.log('[DEBUG] ⚠️ EventBridge monitoring unavailable - sequence completed');
-                        console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        // updateStatus('Agent on hold - Manual monitoring required', 'status-complete');
-                        updateButton('TSN Reset (Conference)', true);
-                    }
-                    
+                                        
                 } catch (error) {
                     console.error("[DEBUG] Sequence error:", error);
                     console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
@@ -245,6 +236,23 @@
                     sequenceRunning = false;
                 }
             };
+
+async function checkParticipantCount() {
+    const response = await makeApiCall(
+        `/api/v2/conversations/calls/${conversationId}`, 
+        'GET', 
+        null
+    );
+    
+    const activeParticipants = response.participants.filter(p => 
+        p.state === 'connected' || p.state === 'alerting'
+    );
+    
+    console.log(`[DEBUG] Current participant count: ${activeParticipants.length}`);
+    return activeParticipants.length;
+}
+
+
 
             // EventBridge Setup Function
             async function setupEventBridgeMonitoring() {
