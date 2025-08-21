@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Call Handler - EventBridge</title>
+        <title>Call Handler</title>
         <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
         <style>
             .action-button {
@@ -16,7 +16,7 @@
                 font-size: 14px;
                 margin-top: 0px;
             }
-            
+
             .center {
                 text-align: center;
             }
@@ -25,442 +25,275 @@
     <body>
         <div class="center">
             <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
+            <!--div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div-->
+            <!--div id="DebugOutput" style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 5px; font-family: monospace; font-size: 12px; text-align: left; white-space: pre-wrap; max-height: 400px; overflow-y: auto; display: none;"></div-->
+            <table class="redTable">
+                <tbody id="tabla-container"></tbody>
+            </table>
         </div>
-    
+
         <script>
-            const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1';
+            const CLIENT_ID = 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1'; // Client ID to change in each Org
             const ENVIRONMENT = 'euw2.pure.cloud';
             const REDIRECT_URI = 'https://clivejdixon.github.io/index3-0.html';
-            const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
+            const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb'; // Queue ID for Wholesale_Global_EN_ResetTSN_Q to change in each Org
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
+            const SHOWDEBUG = false; // Set to false to hide debug information
             const WAITTIME = 1000;
-
-            // Global variables
-            let eventBridgeId = null;
-            let isMonitoringParticipants = false;
-            let sequenceRunning = false;
-            let monitoringInterval = null;
             
-            // Global parameters that will be set after authentication
-            let gToken = null;
-            let conversationId = null;
-            let agentParticipantId = null;
-            let customerParticipantId = null;
-            let consultingUserId = null;
-            let BASE_API_URL = null;
-
-            // MAIN SEQUENCE FUNCTION
-            window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 72a');
-                
-                // Check if we have the required parameters
-                if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
-                    const errorMsg = 'Missing required parameters. Please ensure OAuth flow completed successfully.';
-                    console.error('[DEBUG] ❌', errorMsg);
-                    console.log('[DEBUG] ❌ conversationId:', conversationId);
-                    console.log('[DEBUG] ❌ agentParticipantId:', agentParticipantId);
-                    console.log('[DEBUG] ❌ customerParticipantId:', customerParticipantId);
-                    console.log('[DEBUG] ❌ consultingUserId:', consultingUserId);
-                    console.log('[DEBUG] ❌ gToken:', gToken);
-                    return;
-                }
-                
-                // Prevent multiple sequence executions
-                if (sequenceRunning) {
-                    console.log('[DEBUG] ⚠️ Sequence already running, ignoring request');
-                    return;
-                }
-                
-                sequenceRunning = true;
-
-                console.log('[DEBUG] 🚀 72 Starting TSN Reset sequence...');
-
-                try {
-                    // Step 1: Try POST consult first, fallback to POST participants
-                    try {
-                        // Step 1a: POST consult
-                        await makeApiCall(
-                            `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
-                            'POST',
-                            {
-                                speakTo: SPEAK_TO_INITIAL,
-                                destination: {
-                                    queueId: QUEUE_ID
-                                },
-                                consultingUserId: consultingUserId
-                            },
-                            'STEP 1a: Creating consultation'
-                        );
-                    } catch (error) {
-                        console.log('[DEBUG] ⚠️ Step 1a failed (likely already in conference), trying fallback approach...');
-                        
-                        try {
-                            // Step 1b: POST participants (fallback)
-                            await makeApiCall(
-                                `${BASE_API_URL}/participants`,
-                                'POST',
-                                {
-                                    "participants": [{"queueId": QUEUE_ID}]
-                                },
-                                'STEP 1b: Adding queue to conference (fallback)'
-                            );
-                            console.log('[DEBUG] ✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
-                            
-                            // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
-                            console.log('[DEBUG] ⏳ Waiting 1 second before final step...');
-                            await sleep(WAITTIME);
-                            
-                            // Step 3: PATCH participant held
-                            await makeApiCall(
-                                `${BASE_API_URL}/participants/${agentParticipantId}`,
-                                'PATCH',
-                                {
-                                    held: true
-                                },
-                                'STEP 3: Placing agent on hold'
-                            );
-
-                            // Wait a bit for connection to establish
-                            await sleep(58000);
-                            console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
-                            // Start monitoring - store the interval ID
-                            startParticipantMonitoring();
-                            
-                            return; // Exit early since we've completed the sequence
-                        } catch (fallbackError) {
-                            console.log('[DEBUG] ❌ Both Step 1a and 1b failed');
-                            throw fallbackError;
-                        }
-                    }
-
-                    // Wait time pause
-                    console.log('[DEBUG] ⏳ Waiting 1 second...');
-                    await sleep(WAITTIME);
-
-                    // Step 2: Try PATCH consult first, fallback to POST participants
-                    try {
-                        // Step 2a: PATCH consult
-                        await makeApiCall(
-                            `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
-                            'PATCH',
-                            {
-                                speakTo: SPEAK_TO_FINAL,
-                                consultingUserId: consultingUserId
-                            },
-                            'STEP 2a: Updating consultation speak mode'
-                        );
-                    } catch (error) {
-                        console.log('[DEBUG] ⚠️ Step 2a failed, trying fallback approach...');
-                        
-                        try {
-                            // Step 2b: POST participants (fallback)
-                            await makeApiCall(
-                                `${BASE_API_URL}/participants`,
-                                'POST',
-                                {
-                                    "participants": [{"queueId": QUEUE_ID}]
-                                },
-                                'STEP 2b: Adding queue to conference (fallback)'
-                            );
-                            console.log('[DEBUG] ✅ Step 2b fallback succeeded');
-                        } catch (fallbackError) {
-                            console.log('[DEBUG] ❌ Both Step 2a and 2b failed');
-                            throw fallbackError;
-                        }
-                    }
-
-                    // Wait time pause
-                    console.log('[DEBUG] ⏳ Waiting 1 second...');
-                    await sleep(WAITTIME);
-
-                    // Step 3: PATCH participant held
-                    await makeApiCall(
-                        `${BASE_API_URL}/participants/${agentParticipantId}`,
-                        'PATCH',
-                        {
-                            held: true
-                        },
-                        'STEP 3: Placing agent on hold'
-                    );
-                    
-                    // Wait a bit for connection to establish
-                    await sleep(58000);
-                    console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
-                    // Start monitoring - store the interval ID
-                    startParticipantMonitoring();
-                                        
-                } catch (error) {
-                    console.error("[DEBUG] Sequence error:", error);
-                    console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                } finally {
-                    // Always reset the sequence running flag
-                    sequenceRunning = false;
-                }
-            };
-
-            function startParticipantMonitoring() {
-                if (isMonitoringParticipants) {
-                    console.log('[DEBUG] ⚠️ Monitoring already active');
-                    return;
-                }
-                
-                isMonitoringParticipants = true;
-                console.log('[DEBUG] 🔄 Starting participant monitoring...');
-                
-                // Store the interval ID for cleanup
-                monitoringInterval = setInterval(async () => {
-                    try {
-                        const participantCount = await checkParticipantCount();
-                        
-                        // If participant count drops below 3, take agent off hold
-                        if (participantCount < 3) {
-                            console.log('[DEBUG] 🎯 Participant count dropped below 3, taking agent off hold...');
-                            await takeAgentOffHold();
-                        }
-                    } catch (error) {
-                        console.error('[DEBUG] ❌ Error during monitoring:', error);
-                        // Continue monitoring even if one check fails
-                    }
-                }, 2000);
-            }
-
-            async function checkParticipantCount() {
-                try {
-                    const response = await makeApiCall(
-                        `${BASE_API_URL}`, // Use the full BASE_API_URL, not relative path
-                        'GET', 
-                        null,
-                        'Checking participant count'
-                    );
-                    
-                    const activeParticipants = response.participants.filter(p => 
-                        p.state === 'connected' || p.state === 'alerting'
-                    );
-                    
-                    console.log(`[DEBUG] Current participant count: ${activeParticipants.length}`);
-                    return activeParticipants.length;
-                } catch (error) {
-                    console.error('[DEBUG] ❌ Error checking participant count:', error);
-                    throw error;
-                }
-            }
-
-            async function takeAgentOffHold() {
-                try {
-                    await makeApiCall(
-                        `${BASE_API_URL}/participants/${agentParticipantId}`,
-                        'PATCH',
-                        {
-                            held: false
-                        },
-                        'FINAL STEP: Taking agent off hold'
-                    );
-                    
-                    console.log('[DEBUG] 🎉 Agent taken off hold - TSN Reset sequence complete!');
-                    
-                    // Clean up monitoring
-                    setTimeout(() => {
-                        cleanupMonitoring();
-                    }, 2000);
-                    
-                } catch (error) {
-                    console.error("[DEBUG] ❌ Error taking agent off hold:", error);
-                }
-            }
-
-            function cleanupMonitoring() {
-                if (monitoringInterval) {
-                    console.log('[DEBUG] 🧹 Cleaning up participant monitoring...');
-                    clearInterval(monitoringInterval);
-                    monitoringInterval = null;
-                }
-                isMonitoringParticipants = false;
-            }
-
-            // Helper Functions
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
                 const params = new URLSearchParams(hash);
                 const token = params.get('access_token');
                 const state = params.get('state');
-
-                console.log('[DEBUG] OAuth Callback Details:', {
-                    hasHash: !!window.location.hash,
-                    token: token ? 'Present' : 'Missing',
-                    state: state || 'No state found'
-                });
+                console.log("Received state:", state);
+                let conversationId = null;
+                let agentParticipantId = null;
+                let customerParticipantId = null;
+                let consultingUserId = null;
 
                 if (state) {
                     try {
-                     const decodedState = decodeURIComponent(state);
-                     const parsed = JSON.parse(atob(decodedState));
-            
-                     console.log('[DEBUG] Decoded State:', {
-                         conversationId: parsed.conversationId,
-                            agentParticipantId: parsed.agentParticipantId,
-                            customerParticipantId: parsed.customerParticipantId,
-                         consultingUserId: parsed.consultingUserId
-                        });
-
-                        return {
-                            token, 
-                            conversationId: parsed.conversationId,
-                            agentParticipantId: parsed.agentParticipantId,
-                         customerParticipantId: parsed.customerParticipantId,
-                            consultingUserId: parsed.consultingUserId
-                        };
+                        const decodedState = decodeURIComponent(state);
+                        const parsed = JSON.parse(atob(decodedState));
+                        conversationId = parsed.conversationId;
+                        agentParticipantId = parsed.agentParticipantId;
+                        customerParticipantId = parsed.customerParticipantId;
+                        consultingUserId = parsed.consultingUserId;
+                        console.log("Parsed from state:", parsed);
                     } catch (e) {
-                     console.error('[DEBUG] State Decoding Error:', e);
-                 }
-             }
+                        console.error("Error decoding state:", e);
+                    }
+                }
 
-                return { token: null };
+                return { token, conversationId, agentParticipantId, customerParticipantId, consultingUserId };
             }
 
             function getParametersFromUrl() {
                 const urlParams = new URLSearchParams(window.location.search);
-                const params = {
-                conversationId: urlParams.get('conversationId'),
-                agentParticipantId: urlParams.get('agentParticipantId'),
-                customerParticipantId: urlParams.get('customerParticipantId'),
-                consultingUserId: urlParams.get('consultingUserId')
+                return {
+                    conversationId: urlParams.get('conversationId'),
+                    agentParticipantId: urlParams.get('agentParticipantId'),
+                    customerParticipantId: urlParams.get('customerParticipantId'),
+                    consultingUserId: urlParams.get('consultingUserId')
                 };
-
-                console.log('[DEBUG] Raw URL Parameters:', {
-                    fullSearch: window.location.search,
-                    parsedParams: params
-                });
-
-                return params;
             }
 
-            function sleep(ms) {
-                return new Promise(resolve => setTimeout(resolve, ms));
-            }
+            // First try to get parameters from OAuth callback (hash)
+            let { token: gToken, conversationId, agentParticipantId, customerParticipantId, consultingUserId } = getTokenAndStateFromHash();
 
-            async function makeApiCall(endpoint, method, data, description = '') {
-                try {
-                    console.log(`[DEBUG] ${description} - ${method} ${endpoint}`);
-                    
-                    const response = await $.ajax({
-                        url: endpoint,
-                        type: method,
-                        beforeSend: function(xhr) {
-                            xhr.setRequestHeader('Authorization', 'Bearer ' + gToken);
-                        },
-                        data: JSON.stringify(data),
-                        contentType: 'application/json'
+            // If no token, we need to start OAuth flow
+            if (!gToken) {
+                // Get parameters from URL
+                const urlParams = getParametersFromUrl();
+
+                if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
+                    alert("Missing parameters in the URL. Cannot continue.");
+                    throw new Error("Missing parameters in the URL");
+                }
+
+                // Store parameters in state for OAuth flow
+                const state = btoa(JSON.stringify({
+                    conversationId: urlParams.conversationId,
+                    agentParticipantId: urlParams.agentParticipantId,
+                    customerParticipantId: urlParams.customerParticipantId,
+                    consultingUserId: urlParams.consultingUserId
+                }));
+                console.log("Redirecting with state:", state);
+
+                const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` +
+                    $.param({
+                        response_type: 'token',
+                        client_id: CLIENT_ID,
+                        redirect_uri: REDIRECT_URI,
+                        state: state
                     });
-                    
-                    console.log(`[DEBUG] ✅ ${description} - SUCCESS`);
-                    return response;
-                } catch (error) {
-                    console.error(`[DEBUG] ❌ ${description} - ERROR:`, error);
-                    // Enhanced error logging
-                    console.error(`[DEBUG] ❌ ${description} - ERROR:`, {
-                        status: error.status,
-                     statusText: error.statusText,
-                     responseText: error.responseText,
-                     readyState: error.readyState,
-                     responseHeaders: error.getAllResponseHeaders()
-                 });
-                 throw error;
+                window.location.replace(authUrl);
+            } else {
+                // We have a token, parameters should be in the state
+                if (!conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
+                    alert("Missing parameters in OAuth callback. Cannot continue.");
+                    throw new Error("Missing parameters in OAuth callback");
                 }
-            }
 
-            // Initialize the application
-            (function initializeApp() {
-                console.log('[DEBUG] 🚀 Application starting...');
-                
-                // Check if we already have global variables set (to prevent re-initialization)
-                if (gToken && conversationId && agentParticipantId && customerParticipantId && consultingUserId) {
-                    console.log('[DEBUG] ℹ️ Already initialized, skipping auth flow');
-                    return;
+                console.log("Token obtained:", gToken);
+                console.log("conversationId:", conversationId);
+                console.log("agentParticipantId:", agentParticipantId);
+                console.log("customerParticipantId:", customerParticipantId);
+                console.log("consultingUserId:", consultingUserId);
+
+                const BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
+
+                // Initialize debug display
+                const debugOutput = document.getElementById("DebugOutput");
+                if (SHOWDEBUG) {
+                    debugOutput.style.display = 'block';
                 }
-                
-                // First try to get parameters from OAuth callback (hash)
-                let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
 
-                // If no token, we need to start OAuth flow
-                if (!token) {
-                    console.log('[DEBUG] 🔑 No token found, checking URL parameters...');
-                    
-                    // Get parameters from URL
-                    const urlParams = getParametersFromUrl();
-                    
-                    if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
-                        const errorMsg = "Missing parameters in the URL. Cannot continue.";
-                        console.log(`[DEBUG] ❌ ${errorMsg}`);
-                        alert(errorMsg);
-                        return;
+                function addDebugLine(message) {
+                    if (SHOWDEBUG) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        debugOutput.textContent += `[${timestamp}] ${message}\n`;
+                        debugOutput.scrollTop = debugOutput.scrollHeight;
                     }
+                }
 
-                    // Check if we're already in the middle of OAuth (to prevent loops)
-                    if (window.location.href.includes('oauth_redirect_in_progress')) {
-                        console.log('[DEBUG] ⚠️ OAuth redirect already in progress, waiting...');
-                        return;
-                    }
+                function sleep(ms) {
+                    return new Promise(resolve => setTimeout(resolve, ms));
+                }
 
-                    // Store parameters in state for OAuth flow
-                    const state = btoa(JSON.stringify({
-                        conversationId: urlParams.conversationId,
-                        agentParticipantId: urlParams.agentParticipantId,
-                        customerParticipantId: urlParams.customerParticipantId,
-                        consultingUserId: urlParams.consultingUserId                
-                    }));
-                    console.log("[DEBUG] 🔄 Redirecting to OAuth...");
+                async function makeApiCall(endpoint, method, data, description = '') {
+                    try {
+                        addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
 
-                    const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
-                        $.param({
-                            response_type: 'token',
-                            client_id: CLIENT_ID,
-                            redirect_uri: REDIRECT_URI + '?oauth_redirect_in_progress=true',
-                            state: state
+                        const response = await $.ajax({
+                            url: endpoint,
+                            type: method,
+                            beforeSend: function(xhr) {
+                                xhr.setRequestHeader('Authorization', 'Bearer ' + gToken);
+                            },
+                            data: JSON.stringify(data),
+                            contentType: 'application/json'
                         });
-                    
-                    // Use setTimeout to prevent immediate redirect issues
-                    setTimeout(() => {
-                        window.location.replace(authUrl);
-                    }, 1000);
-                } else {
-                    // We have a token, parameters should be in the state
-                    if (!convId || !agentId || !customerId || !consultId) {
-                        const errorMsg = "Missing parameters in OAuth callback. Cannot continue.";
-                        console.log(`[DEBUG] ❌ ${errorMsg}`);
-                        alert(errorMsg);
-                        return;
-                    }
 
-                    // Set global variables
-                    gToken = token;
-                    conversationId = convId;
-                    agentParticipantId = agentId;
-                    customerParticipantId = customerId;
-                    consultingUserId = consultId;
-                    BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
-
-                    console.log("[DEBUG] ✅ Authentication complete");
-                    console.log(`[DEBUG] 📋 Conversation ID: ${conversationId}`);
-                    console.log(`[DEBUG] 👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
-                    console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
-                    console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
-                                        
-                    // Clear hash to prevent re-processing, but keep URL params
-                    if (window.location.hash) {
-                        const newUrl = window.location.pathname + window.location.search.replace('oauth_redirect_in_progress=true', '').replace('?&', '?').replace('&&', '&');
-                        window.history.replaceState(null, null, newUrl);
+                        console.log(`${method} response:`, response);
+                        addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
+                        return response;
+                    } catch (error) {
+                        console.error(`${method} error:`, error);
+                        const errorText = error.responseText || error.statusText || error.message || 'Unknown error';
+                        const statusCode = error.status || 'Unknown';
+                        addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
+                        throw error;
                     }
                 }
-            })();
 
-            // Clean up monitoring if page is being unloaded
-            window.addEventListener('beforeunload', function(event) {
-                if (isMonitoringParticipants) {
-                    console.log('[DEBUG] ⚠️ Page unload during monitoring - cleaning up');
-                    cleanupMonitoring();
-                }
-            });
+                window.startSequence = async function() {
+                    if (SHOWDEBUG) {
+                        // document.getElementById("ConfirmationMessage").textContent = "Processing...";
+                        debugOutput.textContent = ''; // Clear previous debug output
+                    }
+
+                    try {
+                        // Step 1: Try POST consult first, fallback to POST participants
+                        let step1Success = false;
+                        try {
+                            // Step 1a: POST consult
+                            await makeApiCall(
+                                `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
+                                'POST',
+                                {
+                                    speakTo: SPEAK_TO_INITIAL,
+                                    destination: {
+                                        queueId: QUEUE_ID
+                                    },
+                                    consultingUserId: consultingUserId
+                                },
+                                'STEP 1a: Creating consultation'
+                            );
+                            step1Success = true;
+                        } catch (error) {
+                            addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
+
+                            try {
+                                // Step 1b: POST participants (fallback)
+                                await makeApiCall(
+                                    `${BASE_API_URL}/participants`,
+                                    'POST',
+                                    {
+                                        "participants": [{"queueId": QUEUE_ID}]
+                                    },
+                                    'STEP 1b: Adding queue to conference (fallback)'
+                                );
+                                step1Success = true;
+                                addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
+
+                                // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
+                                addDebugLine('⏳ Waiting 2 seconds before final step...');
+                                await sleep(WAITTIME);
+
+                                // Step 3: PATCH participant held
+                                await makeApiCall(
+                                    `${BASE_API_URL}/participants/${agentParticipantId}`,
+                                    'PATCH',
+                                    {
+                                        held: true
+                                    },
+                                    'STEP 3: Placing agent on hold'
+                                );
+
+                                addDebugLine('🎉 All steps completed successfully!');
+                                //    document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                                return; // Exit early since we've completed the sequence
+                            } catch (fallbackError) {
+                                addDebugLine(`❌ Both Step 1a and 1b failed`);
+                                throw fallbackError; // Re-throw to trigger main error handling
+                            }
+                        }
+
+                        // 2 second pause
+                        addDebugLine('⏳ Waiting 2 seconds...');
+                        await sleep(WAITTIME);
+
+                        // Step 2: Try PATCH consult first, fallback to POST participants
+                        let step2Success = false;
+                        try {
+                            // Step 2a: PATCH consult
+                            await makeApiCall(
+                                `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
+                                'PATCH',
+                                {
+                                    speakTo: SPEAK_TO_FINAL,
+                                    consultingUserId: consultingUserId
+                                },
+                                'STEP 2a: Updating consultation speak mode'
+                            );
+                            step2Success = true;
+                        } catch (error) {
+                            addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
+
+                            try {
+                                // Step 2b: POST participants (fallback)
+                                await makeApiCall(
+                                    `${BASE_API_URL}/participants`,
+                                    'POST',
+                                    {
+                                        "participants": [{"queueId": QUEUE_ID}]
+                                    },
+                                    'STEP 2b: Adding queue to conference (fallback)'
+                                );
+                                step2Success = true;
+                                addDebugLine('✅ Step 2b fallback succeeded');
+                            } catch (fallbackError) {
+                                addDebugLine(`❌ Both Step 2a and 2b failed`);
+                                throw fallbackError; // Re-throw to trigger main error handling
+                            }
+                        }
+
+                        // 2 second pause
+                        addDebugLine('⏳ Waiting 2 seconds...');
+                        await sleep(WAITTIME);
+
+                        // Step 3: PATCH participant held
+                        await makeApiCall(
+                            `${BASE_API_URL}/participants/${agentParticipantId}`,
+                            'PATCH',
+                            {
+                                held: true
+                            },
+                            'STEP 3: Placing agent on hold'
+                        );
+
+                        addDebugLine('🎉 All steps completed successfully!');
+                        //    document.getElementById("ConfirmationMessage").textContent = "✅ Sequence completed successfully.";
+                    } catch (error) {
+                        console.error("Sequence error:", error);
+                        addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
+                        //    document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
+                    }
+                };
+            }
         </script>
     </body>
 </html>
