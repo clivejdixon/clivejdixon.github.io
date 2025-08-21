@@ -79,6 +79,11 @@
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
                     const errorMsg = 'Missing required parameters. Please ensure OAuth flow completed successfully.';
                     console.error('[DEBUG] ❌', errorMsg);
+                    console.log('[DEBUG] ❌ conversationId:', conversationId);
+                    console.log('[DEBUG] ❌ agentParticipantId:', agentParticipantId);
+                    console.log('[DEBUG] ❌ customerParticipantId:', customerParticipantId);
+                    console.log('[DEBUG] ❌ consultingUserId:', consultingUserId);
+                    console.log('[DEBUG] ❌ gToken:', gToken);
                     updateStatus('Error: Missing parameters', 'status-error');
                     return;
                 }
@@ -92,7 +97,7 @@
                 sequenceRunning = true;
                 updateButton('Processing...', false);
                 updateStatus('Starting TSN Reset sequence...', 'status-processing');
-                console.log('[DEBUG] 🚀 65 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 66 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -449,7 +454,7 @@
             // Initialize the application
             (function initializeApp() {
                 console.log('[DEBUG] 🚀 Application starting...');
-                updateStatus('Application starting...', 'status-loading');
+                // updateStatus('Application starting...', 'status-loading');
                 
                 // First try to get parameters from OAuth callback (hash)
                 let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
@@ -519,7 +524,7 @@
                     // Update UI to ready state
                     updateStatus('Ready for TSN Reset', 'status-ready');
                     updateButton('TSN Reset (Conference)', true);
-                    showConversationInfo();
+                    // showConversationInfo();
                     
                     // Clear hash to prevent re-processing
                     if (window.location.hash) {
