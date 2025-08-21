@@ -24,7 +24,7 @@
     </head>
     <body>
         <div class="center">
-            <button class="action-button" onclick="startSequence(event)">TSN Reset (Conference)</button>
+            <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
         </div>
     
         <script>
@@ -38,15 +38,14 @@
             const WEBSOCKET_SETUP_DELAY = 20000; // Configurable WebSocket setup delay
             const MAX_WEBSOCKET_RECONNECT_ATTEMPTS = 5;
             const WEBSOCKET_RECONNECT_DELAY = 2000; // 2 seconds between reconnect attempts
-
+            const WEBSOCKET_HEARTBEAT_INTERVAL = 5000; // 5 seconds
 
             // Global variables
             let websocket = null;
-            let notificationChannelId = null;
+            let websocketChannelId = null;
             let isMonitoringParticipants = false;
-            let sequenceRunning = false;
             let websocketReconnectAttempts = 0;
-            let isPageUpdateDetected = false;
+            let websocketHeartbeatInterval = null;
             
             // Global parameters that will be set after authentication
             let gToken = null;
@@ -57,7 +56,7 @@
             let BASE_API_URL = null;
 
             // MAIN SEQUENCE FUNCTION - Now defined globally and always available
-            window.startSequence = async function(event) {
+            window.startSequence = async function() {
                 // Prevent default button behavior and stop event propagation
                 if (event) {
                     event.preventDefault();
@@ -80,7 +79,7 @@
                 }
                 
                 sequenceRunning = true;
-                console.log('[DEBUG] 🚀 57 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 59 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -130,28 +129,18 @@
                                 'STEP 3: Placing agent on hold'
                             );
 
-                            // Add a delay before WebSocket setup
-                            console.log(`[DEBUG]🕒 Waiting ${WEBSOCKET_SETUP_DELAY/1000} seconds before WebSocket setup...`);
-                            await sleep(WEBSOCKET_SETUP_DELAY);
-                            
-                            // Setup WebSocket notifications AFTER agent is on hold
-                            console.log('[DEBUG] 🔌 Setting up WebSocket notifications after agent on hold...');
-                            const websocketSetupSuccess = await setupWebSocketNotifications();
+                             const monitoringStarted = await setupPersistentWebSocketNotifications();
 
-                            // Start monitoring for participant changes
-                            if (websocketSetupSuccess) {
+                             if (monitoringStarted) {
                                 isMonitoringParticipants = true;
-                                console.log('[DEBUG] 👁️ Now monitoring for customer disconnections...');
-                                console.log('[DEBUG] ✅ Agent on hold - Monitoring active');
+                                console.log('[DEBUG] ✅ Agent on hold - Persistent WebSocket monitoring active');
                             } else {
-                                console.log('[DEBUG] ⚠️ WebSocket monitoring unavailable - sequence completed');
-                                console.log('[DEBUG] ✅ Agent on hold - Manual monitoring required');
+                                console.log('[DEBUG] ⚠️ Could not start persistent WebSocket monitoring');
                             }
-                            
-                            return; // Exit early since we've completed the sequence
-                        } catch (fallbackError) {
-                            console.log('[DEBUG] ❌ Both Step 1a and 1b failed');
-                            throw fallbackError;
+
+                        } catch (error) {
+                            console.error('❌ Sequence error:', error);
+                            isMonitoringParticipants = false;
                         }
                     }
 
@@ -204,32 +193,18 @@
                         },
                         'STEP 3: Placing agent on hold'
                     );
-                    // Add a delay before WebSocket setup
-                    console.log(`[DEBUG]🕒 Waiting ${WEBSOCKET_SETUP_DELAY/1000} seconds before WebSocket setup...`);
-                    await sleep(WEBSOCKET_SETUP_DELAY);
-                    
-                    // Setup WebSocket notifications AFTER agent is on hold
-                    console.log('[DEBUG] 🔌 Setting up WebSocket notifications after agent on hold...');
-                    const websocketSetupSuccess = await setupWebSocketNotifications();
+                    const monitoringStarted = await setupPersistentWebSocketNotifications();
 
-                    // Start monitoring for participant changes
-                    if (websocketSetupSuccess) {
+                    if (monitoringStarted) {
                         isMonitoringParticipants = true;
-                        console.log('[DEBUG] 👁️ Now monitoring for customer disconnections...');
-                        console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        console.log('[DEBUG] ✅ Agent on hold - Monitoring for disconnections');
+                        console.log('[DEBUG] ✅ Agent on hold - Persistent WebSocket monitoring active');
                     } else {
-                        console.log('[DEBUG] ⚠️ WebSocket monitoring unavailable - sequence completed');
-                        console.log('[DEBUG] 🎉 Initial sequence completed successfully!');
-                        console.log('[DEBUG] ✅ Agent on hold - Manual monitoring required');
+                        console.log('[DEBUG] ⚠️ Could not start persistent WebSocket monitoring');
                     }
-                    
+
                 } catch (error) {
-                    console.error("Sequence error:", error);
-                    console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                    
-                    // Clean up on error
-                    cleanupWebSocket();
+                    console.error('❌ Sequence error:', error);
+                    isMonitoringParticipants = false;
                 } finally {
                     // Always reset the sequence running flag
                     sequenceRunning = false;
@@ -300,6 +275,164 @@
                 }
             }
 
+            // Enhanced WebSocket Setup with Persistence
+            async function setupPersistentWebSocketNotifications() {
+                try {
+                    console.log('🔌 Setting up Persistent WebSocket notifications...');
+        
+                    // Create notification channel
+                    const channelResponse = await makeApiCall(
+                        `https://api.${ENVIRONMENT}/api/v2/notifications/channels`,
+                        'POST',
+                        {},
+                        'Creating notification channel'
+                    );
+        
+                    websocketChannelId = channelResponse.id;
+                    const websocketUri = channelResponse.connectUri;
+                    console.log(`[DEBUG] 📡 Channel created: ${websocketChannelId}`);
+        
+                    // Subscribe to conversation events
+                    await makeApiCall(
+                        `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${websocketChannelId}/subscriptions`,
+                        'POST',
+                        [{
+                            id: `v2.detail.events.conversation.${conversationId}.customer.end`
+                        }],
+                        'Subscribing to customer disconnect notifications'
+                    );
+        
+                    // Create WebSocket with enhanced connection management
+                    websocket = new WebSocket(websocketUri);
+        
+                    // Store WebSocket connection details in sessionStorage for page reload persistence
+                    sessionStorage.setItem('websocketChannelId', websocketChannelId);
+                    sessionStorage.setItem('conversationId', conversationId);
+        
+                    // WebSocket Event Handlers
+                    websocket.onopen = function() {
+                        console.log('[DEBUG] ✅ WebSocket connected successfully');
+                        websocketReconnectAttempts = 0;
+            
+                        // Setup periodic heartbeat
+                        setupWebSocketHeartbeat();
+                    };
+        
+                    websocket.onmessage = function(event) {
+                        try {
+                            const notification = JSON.parse(event.data);
+                            console.log('[DEBUG] 📨 WebSocket notification received:', notification);
+                            handleParticipantNotification(notification);
+                        } catch (error) {
+                            console.log(`[DEBUG] ❌ Error parsing WebSocket message: ${error.message}`);
+                        }
+                    };
+        
+                    websocket.onerror = function(error) {
+                        console.error('❌ WebSocket error:', error);
+                        attemptWebSocketReconnection();
+                    };
+        
+                    websocket.onclose = function(event) {
+                        console.log(`[DEBUG] 🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
+            
+                        // Stop heartbeat on close
+                        clearWebSocketHeartbeat();
+            
+                        // Attempt reconnection if not intentionally closed
+                        if (isMonitoringParticipants) {
+                            attemptWebSocketReconnection();
+                        }
+                    };
+        
+                    return true;
+                } catch (error) {
+                    console.error('[DEBUG] ❌ Persistent WebSocket setup failed:', error);
+                    return false;
+                }
+            }
+
+            // WebSocket Heartbeat Management
+            function setupWebSocketHeartbeat() {
+                clearWebSocketHeartbeat(); // Clear any existing heartbeat
+    
+                websocketHeartbeatInterval = setInterval(() => {
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        try {
+                            websocket.send(JSON.stringify({
+                                type: 'heartbeat', 
+                                timestamp: new Date().toISOString()
+                            }));
+                            console.log('[DEBUG] 💓 Sent WebSocket heartbeat');
+                        } catch (error) {
+                            console.log(`[DEBUG] ❌ Heartbeat failed: ${error.message}`);
+                              clearWebSocketHeartbeat();
+                        }
+                    } else {
+                        clearWebSocketHeartbeat();
+                    }
+                }, WEBSOCKET_HEARTBEAT_INTERVAL);
+            }
+
+            function clearWebSocketHeartbeat() {
+                if (websocketHeartbeatInterval) {
+                    clearInterval(websocketHeartbeatInterval);
+                    websocketHeartbeatInterval = null;
+                }
+            }
+
+            // WebSocket Reconnection Strategy
+            function attemptWebSocketReconnection() {
+                // Increment reconnect attempts
+                websocketReconnectAttempts++;
+    
+                // Check if we've exceeded max reconnect attempts
+                if (websocketReconnectAttempts > MAX_WEBSOCKET_RECONNECT_ATTEMPTS) {
+                    console.log('[DEBUG] ❌ Max WebSocket reconnect attempts reached');
+                    isMonitoringParticipants = false;
+                    return;
+                }
+    
+                console.log(`🔄 Attempting WebSocket reconnect (Attempt ${websocketReconnectAttempts})`);
+    
+                // Use setTimeout to delay reconnection attempt
+                setTimeout(async () => {
+                    try {
+                        // Restore previous connection details from sessionStorage
+                        const storedChannelId = sessionStorage.getItem('websocketChannelId');
+                        const storedConversationId = sessionStorage.getItem('conversationId');
+            
+                        if (storedChannelId && storedConversationId) {
+                            websocketChannelId = storedChannelId;
+                            conversationId = storedConversationId;
+                
+                            const reconnectSuccess = await setupPersistentWebSocketNotifications();
+                
+                            if (reconnectSuccess) {
+                                console.log('[DEBUG] ✅ WebSocket successfully reconnected');
+                                websocketReconnectAttempts = 0; // Reset reconnect attempts
+                            } else {
+                                throw new Error('WebSocket reconnection failed');
+                            }
+                        }
+                    } catch (reconnectError) {
+                        console.log(`[DEBUG] ❌ WebSocket reconnection failed: ${reconnectError.message}`);
+                        isMonitoringParticipants = false;
+                    }
+                }, WEBSOCKET_RECONNECT_DELAY);
+            }
+
+            // Page Visibility Change Handling
+            document.addEventListener('visibilitychange', function() {
+                    if (document.visibilityState === 'visible') {
+                    // Page becomes visible again - attempt to restore WebSocket if needed
+                    if (isMonitoringParticipants && (!websocket || websocket.readyState !== WebSocket.OPEN)) {
+                        console.log('[DEBUG] 📡 Page visible - attempting WebSocket restoration');
+                        attemptWebSocketReconnection();
+                    }
+                }
+            });
+            
             // WebSocket notification functions
             async function setupWebSocketNotifications() {
                 try {
