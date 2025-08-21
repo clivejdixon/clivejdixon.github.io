@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Call Handler - Debug Enhanced</title>
+        <title>Call Handler - Minimal</title>
         <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
         <style>
             .action-button {
@@ -20,33 +20,11 @@
             .center {
                 text-align: center;
             }
-
-            #DebugOutput {
-                margin-top: 20px; 
-                padding: 10px; 
-                background-color: #f0f0f0; 
-                border: 1px solid #ccc; 
-                border-radius: 5px; 
-                font-family: monospace; 
-                font-size: 12px; 
-                text-align: left; 
-                white-space: pre-wrap; 
-                max-height: 400px; 
-                overflow-y: auto;
-            }
         </style>
     </head>
     <body>
         <div class="center">
             <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
-            
-            <div id="ConfirmationMessage" style="margin-top: 20px; font-weight: bold; color: green;"></div>
-            
-            <div id="DebugOutput" style="display: block;"></div>
-            
-            <table class="redTable">
-                <tbody id="tabla-container"></tbody>
-            </table>
         </div>
     
         <script>
@@ -56,15 +34,12 @@
             const QUEUE_ID = '8e75c14e-3d97-44df-9e81-10421015f9cb';
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
-            const SHOWDEBUG = true;
             const WAITTIME = 1000;
 
             // Global variables
             let websocket = null;
             let notificationChannelId = null;
             let isMonitoringParticipants = false;
-            let debugBuffer = [];
-            let maxDebugLines = 100;
             let sequenceRunning = false;
             
             // Global parameters that will be set after authentication
@@ -75,58 +50,26 @@
             let consultingUserId = null;
             let BASE_API_URL = null;
 
-            // Enhanced debug functions
-            function addDebugLine(message) {
-                if (SHOWDEBUG) {
-                    const timestamp = new Date().toLocaleTimeString();
-                    const line = `[${timestamp}] ${message}`;
-                    
-                    // Add to buffer
-                    debugBuffer.push(line);
-                    if (debugBuffer.length > maxDebugLines) {
-                        debugBuffer.shift();
-                    }
-                    
-                    // Update display
-                    const debugOutput = document.getElementById("DebugOutput");
-                    if (debugOutput) {
-                        debugOutput.textContent = debugBuffer.join('\n') + '\n';
-                        debugOutput.scrollTop = debugOutput.scrollHeight;
-                    }
-                    
-                    // Also log to console for backup
-                    console.log(`[DEBUG] ${message}`);
-                }
-            }
-
-            function updateWebSocketStatus(status, className) {
-                // Removed WebSocket status display as requested
-                addDebugLine(`🔄 WebSocket status: ${status}`);
-            }
-
             // MAIN SEQUENCE FUNCTION - Now defined globally and always available
             window.startSequence = async function() {
                 console.log('🖱️ TSN Reset button clicked!');
-                addDebugLine('🖱️ TSN Reset button clicked!');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
                     const errorMsg = 'Missing required parameters. Please ensure OAuth flow completed successfully.';
                     console.error(errorMsg);
-                    addDebugLine(`❌ ${errorMsg}`);
                     alert(errorMsg);
                     return;
                 }
                 
                 // Prevent multiple sequence executions
                 if (sequenceRunning) {
-                    addDebugLine('⚠️ Sequence already running, ignoring request');
+                    console.log('⚠️ Sequence already running, ignoring request');
                     return;
                 }
                 
                 sequenceRunning = true;
-                document.getElementById("ConfirmationMessage").textContent = "Processing...";
-                addDebugLine('🚀 50 Starting TSN Reset sequence...');
+                console.log('🚀 51 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -147,7 +90,7 @@
                         );
                         step1Success = true;
                     } catch (error) {
-                        addDebugLine(`⚠️ Step 1a failed (likely already in conference), trying fallback approach...`);
+                        console.log('⚠️ Step 1a failed (likely already in conference), trying fallback approach...');
                         
                         try {
                             // Step 1b: POST participants (fallback)
@@ -160,10 +103,10 @@
                                 'STEP 1b: Adding queue to conference (fallback)'
                             );
                             step1Success = true;
-                            addDebugLine('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
+                            console.log('✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
                             
                             // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
-                            addDebugLine('⏳ Waiting 1 second before final step...');
+                            console.log('⏳ Waiting 1 second before final step...');
                             await sleep(WAITTIME);
                             
                             // Step 3: PATCH participant held
@@ -176,34 +119,32 @@
                                 'STEP 3: Placing agent on hold'
                             );
 
-                            // NOW setup WebSocket notifications AFTER agent is on hold
-                            addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
+                            // Setup WebSocket notifications AFTER agent is on hold
+                            console.log('🔌 Setting up WebSocket notifications after agent on hold...');
                             const websocketSetupSuccess = await setupWebSocketNotifications();
 
-                            // Start monitoring for participant changes (only if WebSocket is working)
+                            // Start monitoring for participant changes
                             if (websocketSetupSuccess) {
                                 isMonitoringParticipants = true;
-                                updateWebSocketStatus('Monitoring Active', 'status-monitoring');
-                                addDebugLine('👁️ Now monitoring for customer disconnections...');
-                                document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                                console.log('👁️ Now monitoring for customer disconnections...');
+                                console.log('✅ Agent on hold - Monitoring active');
                             } else {
-                                addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
-                                document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
+                                console.log('⚠️ WebSocket monitoring unavailable - sequence completed');
+                                console.log('✅ Agent on hold - Manual monitoring required');
                             }
                             
                             return; // Exit early since we've completed the sequence
                         } catch (fallbackError) {
-                            addDebugLine(`❌ Both Step 1a and 1b failed`);
-                            throw fallbackError; // Re-throw to trigger main error handling
+                            console.log('❌ Both Step 1a and 1b failed');
+                            throw fallbackError;
                         }
                     }
 
                     // Wait time pause
-                    addDebugLine('⏳ Waiting 1 second...');
+                    console.log('⏳ Waiting 1 second...');
                     await sleep(WAITTIME);
 
                     // Step 2: Try PATCH consult first, fallback to POST participants
-                    let step2Success = false;
                     try {
                         // Step 2a: PATCH consult
                         await makeApiCall(
@@ -215,9 +156,8 @@
                             },
                             'STEP 2a: Updating consultation speak mode'
                         );
-                        step2Success = true;
                     } catch (error) {
-                        addDebugLine(`⚠️ Step 2a failed, trying fallback approach...`);
+                        console.log('⚠️ Step 2a failed, trying fallback approach...');
                         
                         try {
                             // Step 2b: POST participants (fallback)
@@ -229,16 +169,15 @@
                                 },
                                 'STEP 2b: Adding queue to conference (fallback)'
                             );
-                            step2Success = true;
-                            addDebugLine('✅ Step 2b fallback succeeded');
+                            console.log('✅ Step 2b fallback succeeded');
                         } catch (fallbackError) {
-                            addDebugLine(`❌ Both Step 2a and 2b failed`);
-                            throw fallbackError; // Re-throw to trigger main error handling
+                            console.log('❌ Both Step 2a and 2b failed');
+                            throw fallbackError;
                         }
                     }
 
                     // Wait time pause
-                    addDebugLine('⏳ Waiting 1 second...');
+                    console.log('⏳ Waiting 1 second...');
                     await sleep(WAITTIME);
 
                     // Step 3: PATCH participant held
@@ -251,27 +190,25 @@
                         'STEP 3: Placing agent on hold'
                     );
 
-                    // NOW setup WebSocket notifications AFTER agent is on hold
-                    addDebugLine('🔌 Setting up WebSocket notifications after agent on hold...');
+                    // Setup WebSocket notifications AFTER agent is on hold
+                    console.log('🔌 Setting up WebSocket notifications after agent on hold...');
                     const websocketSetupSuccess = await setupWebSocketNotifications();
 
-                    // Start monitoring for participant changes (only if WebSocket is working)
+                    // Start monitoring for participant changes
                     if (websocketSetupSuccess) {
                         isMonitoringParticipants = true;
-                        updateWebSocketStatus('Monitoring Active', 'status-monitoring');
-                        addDebugLine('👁️ Now monitoring for customer disconnections...');
-                        addDebugLine('🎉 Initial sequence completed successfully!');
-                        document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Monitoring for disconnections";
+                        console.log('👁️ Now monitoring for customer disconnections...');
+                        console.log('🎉 Initial sequence completed successfully!');
+                        console.log('✅ Agent on hold - Monitoring for disconnections');
                     } else {
-                        addDebugLine('⚠️ WebSocket monitoring unavailable - sequence completed');
-                        addDebugLine('🎉 Initial sequence completed successfully!');
-                        document.getElementById("ConfirmationMessage").textContent = "✅ Agent on hold - Manual monitoring required";
+                        console.log('⚠️ WebSocket monitoring unavailable - sequence completed');
+                        console.log('🎉 Initial sequence completed successfully!');
+                        console.log('✅ Agent on hold - Manual monitoring required');
                     }
                     
                 } catch (error) {
                     console.error("Sequence error:", error);
-                    addDebugLine(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                    document.getElementById("ConfirmationMessage").textContent = "❌ Error during sequence execution: " + (error.responseText || error.message);
+                    console.log(`💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
                     
                     // Clean up on error
                     cleanupWebSocket();
@@ -325,9 +262,7 @@
 
             async function makeApiCall(endpoint, method, data, description = '') {
                 try {
-                    if (SHOWDEBUG) {
-                        addDebugLine(`${description}\nCalling: ${method} ${endpoint}\nPayload: ${JSON.stringify(data, null, 2)}`);
-                    }
+                    console.log(`${description} - ${method} ${endpoint}`);
                     
                     const response = await $.ajax({
                         url: endpoint,
@@ -339,26 +274,18 @@
                         contentType: 'application/json'
                     });
                     
-                    console.log(`${method} response:`, response);
-                    if (SHOWDEBUG) {
-                        addDebugLine(`✅ SUCCESS: Status 200\nResponse: ${JSON.stringify(response, null, 2)}\n`);
-                    }
+                    console.log(`✅ ${description} - SUCCESS`);
                     return response;
                 } catch (error) {
-                    console.error(`${method} error:`, error);
-                    const errorText = error.responseText || error.statusText || error.message || 'Unknown error';
-                    const statusCode = error.status || 'Unknown';
-                    if (SHOWDEBUG) {
-                        addDebugLine(`❌ ERROR: Status ${statusCode}\nError: ${errorText}\n`);
-                    }
+                    console.error(`❌ ${description} - ERROR:`, error);
                     throw error;
                 }
             }
 
-            // Enhanced WebSocket notification functions
+            // WebSocket notification functions
             async function setupWebSocketNotifications() {
                 try {
-                    addDebugLine('🔌 Setting up WebSocket notifications...');
+                    console.log('🔌 Setting up WebSocket notifications...');
                     
                     // Step 1: Create notification channel
                     const channelResponse = await makeApiCall(
@@ -370,11 +297,10 @@
                     
                     notificationChannelId = channelResponse.id;
                     const websocketUri = channelResponse.connectUri;
-                    addDebugLine(`📡 Channel created: ${notificationChannelId}`);
-                    addDebugLine(`🔗 WebSocket URI: ${websocketUri}`);
+                    console.log(`📡 Channel created: ${notificationChannelId}`);
                     
-                    // Step 2: Subscribe to conversation events - ORIGINAL SUBSCRIPTION
-                    const subscriptionResponse = await makeApiCall(
+                    // Step 2: Subscribe to conversation events
+                    await makeApiCall(
                         `https://api.${ENVIRONMENT}/api/v2/notifications/channels/${notificationChannelId}/subscriptions`,
                         'POST',
                         [{
@@ -383,48 +309,42 @@
                         'Subscribing to customer disconnect notifications'
                     );
                     
-                    addDebugLine(`📬 Subscription created for: v2.detail.events.conversation.${conversationId}.customer.end`);
+                    console.log(`📬 Subscription created for customer disconnect events`);
                     
                     // Step 3: Connect WebSocket
                     websocket = new WebSocket(websocketUri);
                     
                     websocket.onopen = function() {
-                        addDebugLine('✅ WebSocket connected successfully');
-                        updateWebSocketStatus('Connected', 'status-connected');
+                        console.log('✅ WebSocket connected successfully');
                     };
                     
                     websocket.onmessage = function(event) {
                         try {
                             const notification = JSON.parse(event.data);
-                            addDebugLine(`📨 RAW WebSocket message: ${event.data}`);
-                            addDebugLine(`📨 Parsed notification: ${JSON.stringify(notification, null, 2)}`);
+                            console.log('📨 WebSocket notification received:', notification);
                             handleParticipantNotification(notification);
                         } catch (error) {
-                            addDebugLine(`❌ Error parsing WebSocket message: ${error.message}`);
-                            addDebugLine(`📨 Raw data: ${event.data}`);
+                            console.log(`❌ Error parsing WebSocket message: ${error.message}`);
                         }
                     };
                     
                     websocket.onerror = function(error) {
-                        console.error('WebSocket error:', error);
-                        addDebugLine(`❌ WebSocket error: ${JSON.stringify(error)}`);
-                        updateWebSocketStatus('Error', 'status-disconnected');
+                        console.error('❌ WebSocket error:', error);
                     };
                     
                     websocket.onclose = function(event) {
-                        addDebugLine(`🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
-                        updateWebSocketStatus('Disconnected', 'status-disconnected');
+                        console.log(`🔌 WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
                         
                         // If we're still monitoring and the close wasn't intentional, try to reconnect
-                        if (isMonitoringParticipants && event.code !== 1000) { // 1000 = normal closure
-                            addDebugLine('🔄 Unexpected WebSocket closure during monitoring - attempting reconnect in 5 seconds...');
+                        if (isMonitoringParticipants && event.code !== 1000) {
+                            console.log('🔄 Unexpected WebSocket closure - attempting reconnect in 5 seconds...');
                             setTimeout(async () => {
                                 if (isMonitoringParticipants) {
-                                    addDebugLine('🔄 Attempting WebSocket reconnection...');
+                                    console.log('🔄 Attempting WebSocket reconnection...');
                                     try {
                                         await setupWebSocketNotifications();
                                     } catch (error) {
-                                        addDebugLine(`❌ WebSocket reconnection failed: ${error.message}`);
+                                        console.log(`❌ WebSocket reconnection failed: ${error.message}`);
                                     }
                                 }
                             }, 5000);
@@ -435,59 +355,41 @@
                     await sleep(2000);
                     
                     if (websocket.readyState === WebSocket.OPEN) {
-                        addDebugLine('🎯 WebSocket setup completed successfully');
-                        addDebugLine(`🔍 WebSocket ready state: ${websocket.readyState} (1=OPEN)`);
-                        
-                        // Send a test message to verify connection
-                        try {
-                            websocket.send(JSON.stringify({type: 'ping', timestamp: new Date().toISOString()}));
-                            addDebugLine('📤 Sent test ping message to WebSocket');
-                        } catch (error) {
-                            addDebugLine(`❌ Failed to send test ping: ${error.message}`);
-                        }
+                        console.log('🎯 WebSocket setup completed successfully');
                         
                         // Set up periodic heartbeat to keep connection alive
-                        if (websocket.readyState === WebSocket.OPEN) {
-                            const heartbeatInterval = setInterval(() => {
-                                if (websocket && websocket.readyState === WebSocket.OPEN && isMonitoringParticipants) {
-                                    try {
-                                        websocket.send(JSON.stringify({type: 'heartbeat', timestamp: new Date().toISOString()}));
-                                        addDebugLine('💓 Sent heartbeat to WebSocket');
-                                    } catch (error) {
-                                        addDebugLine(`❌ Heartbeat failed: ${error.message}`);
-                                        clearInterval(heartbeatInterval);
-                                    }
-                                } else {
+                        const heartbeatInterval = setInterval(() => {
+                            if (websocket && websocket.readyState === WebSocket.OPEN && isMonitoringParticipants) {
+                                try {
+                                    websocket.send(JSON.stringify({type: 'heartbeat', timestamp: new Date().toISOString()}));
+                                    console.log('💓 Sent heartbeat to WebSocket');
+                                } catch (error) {
+                                    console.log(`❌ Heartbeat failed: ${error.message}`);
                                     clearInterval(heartbeatInterval);
-                                    addDebugLine('💓 Stopped heartbeat - monitoring ended or connection closed');
                                 }
-                            }, 30000); // Send heartbeat every 30 seconds
-                        }
+                            } else {
+                                clearInterval(heartbeatInterval);
+                                console.log('💓 Stopped heartbeat - monitoring ended or connection closed');
+                            }
+                        }, 30000); // Send heartbeat every 30 seconds
                         
                         return true;
                     } else {
-                        addDebugLine(`⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
+                        console.log(`⚠️ WebSocket not fully connected (state: ${websocket.readyState})`);
                         return false;
                     }
                     
                 } catch (error) {
-                    console.error('Failed to setup WebSocket notifications:', error);
-                    addDebugLine(`❌ WebSocket setup failed: ${error.message || error.responseText || 'Unknown error'}`);
-                    updateWebSocketStatus('Setup Failed', 'status-disconnected');
+                    console.error('❌ WebSocket setup failed:', error);
                     return false;
                 }
             }
 
             function handleParticipantNotification(notification) {
-                addDebugLine(`🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
-                
-                // Log ALL notifications regardless of monitoring state
-                addDebugLine(`📋 Notification details:`);
-                addDebugLine(`   Topic: ${notification.topicName || 'No topic'}`);
-                addDebugLine(`   Event Body: ${JSON.stringify(notification.eventBody || {}, null, 2)}`);
+                console.log(`🔍 Processing notification - Monitoring: ${isMonitoringParticipants}`);
                 
                 if (!isMonitoringParticipants) {
-                    addDebugLine('⏸️ Not monitoring participants - but still logging notification');
+                    console.log('⏸️ Not monitoring participants - ignoring notification');
                     return;
                 }
                 
@@ -498,27 +400,24 @@
                     
                     const eventBody = notification.eventBody;
                     
-                    addDebugLine(`🎯 Customer disconnect event detected:`);
-                    addDebugLine(`   Disconnect Type: ${eventBody.disconnectType}`);
-                    addDebugLine(`   Participant ID: ${eventBody.participantId}`);
-                    addDebugLine(`   Purpose: ${eventBody.purpose}`);
-                    addDebugLine(`   Duration: ${eventBody.interactingDurationMs}ms`);
+                    console.log('🎯 Customer disconnect event detected:');
+                    console.log(`   Disconnect Type: ${eventBody.disconnectType}`);
+                    console.log(`   Participant ID: ${eventBody.participantId}`);
                     
                     // Check if this is an ENDPOINT disconnect (customer hanging up)
                     if (eventBody.disconnectType === 'ENDPOINT') {
-                        addDebugLine('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
+                        console.log('🎯 Customer ENDPOINT disconnect detected - taking agent off hold...');
                         
                         // Stop monitoring to prevent multiple triggers
                         isMonitoringParticipants = false;
-                        updateWebSocketStatus('Processing Disconnect', 'status-monitoring');
                         
                         // Take agent off hold
                         takeAgentOffHold();
                     } else {
-                        addDebugLine(`ℹ️ Customer disconnected but not ENDPOINT type: ${eventBody.disconnectType}`);
+                        console.log(`ℹ️ Customer disconnected but not ENDPOINT type: ${eventBody.disconnectType}`);
                     }
                 } else {
-                    addDebugLine('ℹ️ Notification not a customer end event');
+                    console.log('ℹ️ Notification not a customer end event');
                 }
             }
 
@@ -533,143 +432,47 @@
                         'FINAL STEP: Taking agent off hold'
                     );
                     
-                    addDebugLine('🎉 Agent taken off hold - TSN Reset sequence complete!');
-                    document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed - Agent off hold";
+                    console.log('🎉 Agent taken off hold - TSN Reset sequence complete!');
                     
                     // Clean up WebSocket after successful completion
                     setTimeout(() => {
                         cleanupWebSocket();
-                    }, 2000); // Wait 2 seconds before cleanup to see any final messages
+                    }, 2000);
                     
                 } catch (error) {
-                    console.error("Error taking agent off hold:", error);
-                    addDebugLine(`❌ Error taking agent off hold: ${error.responseText || error.message}`);
-                    document.getElementById("ConfirmationMessage").textContent = "❌ Error taking agent off hold";
+                    console.error("❌ Error taking agent off hold:", error);
                 }
             }
 
             function cleanupWebSocket() {
-                addDebugLine(`🧹 cleanupWebSocket() called - Current state: ${websocket ? websocket.readyState : 'null'}`);
+                console.log('🧹 Cleaning up WebSocket...');
                 if (websocket) {
                     websocket.close();
                     websocket = null;
-                    addDebugLine('🧹 WebSocket cleaned up');
+                    console.log('🧹 WebSocket cleaned up');
                 }
                 isMonitoringParticipants = false;
                 sequenceRunning = false;
-                
-                // Clear any sessionStorage monitoring flags
-                try {
-                    sessionStorage.removeItem('tsnMonitoringActive');
-                    sessionStorage.removeItem('tsnConversationId');
-                    sessionStorage.removeItem('tsnAgentId');
-                } catch (e) {
-                    // Ignore sessionStorage errors
-                }
-            }
-
-            // Polling fallback for when WebSocket fails
-            async function setupPollingFallback(conversationId, agentId) {
-                addDebugLine('🔄 Setting up polling fallback for customer disconnect detection...');
-                let pollCount = 0;
-                const maxPolls = 120; // Poll for up to 10 minutes (120 * 5 seconds)
-                
-                const pollForCustomerDisconnect = async () => {
-                    try {
-                        pollCount++;
-                        addDebugLine(`🔍 Polling for customer status (${pollCount}/${maxPolls})...`);
-                        
-                        // Get conversation participants
-                        const response = await makeApiCall(
-                            `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`,
-                            'GET',
-                            null,
-                            `Polling conversation participants (${pollCount})`
-                        );
-                        
-                        // Check if customer is still connected
-                        const participants = response.participants || [];
-                        const customerParticipants = participants.filter(p => 
-                            p.purpose === 'customer' && 
-                            (p.state === 'connected' || p.state === 'alerting')
-                        );
-                        
-                        addDebugLine(`👥 Found ${customerParticipants.length} active customer participants`);
-                        
-                        if (customerParticipants.length === 0) {
-                            // Customer has disconnected!
-                            addDebugLine('🎯 Polling detected customer disconnect - taking agent off hold...');
-                            
-                            // Take agent off hold
-                            await makeApiCall(
-                                `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}/participants/${agentId}`,
-                                'PATCH',
-                                { held: false },
-                                'POLLING FALLBACK: Taking agent off hold'
-                            );
-                            
-                            addDebugLine('🎉 Agent taken off hold via polling fallback - TSN Reset complete!');
-                            document.getElementById("ConfirmationMessage").textContent = "✅ TSN Reset completed via polling - Agent off hold";
-                            return; // Stop polling
-                        }
-                        
-                        // Continue polling if we haven't reached max polls
-                        if (pollCount < maxPolls) {
-                            setTimeout(pollForCustomerDisconnect, 5000); // Poll every 5 seconds
-                        } else {
-                            addDebugLine('⚠️ Polling timeout reached - stopping fallback monitoring');
-                        }
-                        
-                    } catch (error) {
-                        addDebugLine(`❌ Polling error: ${error.responseText || error.message}`);
-                        if (pollCount < maxPolls) {
-                            setTimeout(pollForCustomerDisconnect, 5000); // Retry in 5 seconds
-                        }
-                    }
-                };
-                
-                // Start polling in 2 seconds
-                setTimeout(pollForCustomerDisconnect, 2000);
             }
 
             // Initialize the application
             (function initializeApp() {
-                addDebugLine('🚀 Application starting...');
-                
-                // Check if we're resuming from a monitoring session
-                try {
-                    const wasMonitoring = sessionStorage.getItem('tsnMonitoringActive');
-                    const savedConversationId = sessionStorage.getItem('tsnConversationId');
-                    const savedAgentId = sessionStorage.getItem('tsnAgentId');
-                    
-                    if (wasMonitoring === 'true' && savedConversationId && savedAgentId) {
-                        addDebugLine('🔄 Resuming monitoring session after page reload...');
-                        // Clear the session storage
-                        sessionStorage.removeItem('tsnMonitoringActive');
-                        sessionStorage.removeItem('tsnConversationId');
-                        sessionStorage.removeItem('tsnAgentId');
-                        
-                        // Set up polling fallback for this conversation
-                        setupPollingFallback(savedConversationId, savedAgentId);
-                    }
-                } catch (e) {
-                    addDebugLine('⚠️ Could not check sessionStorage for monitoring state');
-                }
+                console.log('🚀 Application starting...');
                 
                 // First try to get parameters from OAuth callback (hash)
                 let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
 
                 // If no token, we need to start OAuth flow
                 if (!token) {
-                    addDebugLine('🔑 No token found, checking URL parameters...');
+                    console.log('🔑 No token found, checking URL parameters...');
                     // Get parameters from URL
                     const urlParams = getParametersFromUrl();
                     
                     if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
                         const errorMsg = "Missing parameters in the URL. Cannot continue.";
-                        addDebugLine(`❌ ${errorMsg}`);
+                        console.log(`❌ ${errorMsg}`);
                         alert(errorMsg);
-                        throw new Error("Missing parameters in the URL");
+                        return;
                     }
 
                     // Store parameters in state for OAuth flow
@@ -679,7 +482,7 @@
                         customerParticipantId: urlParams.customerParticipantId,
                         consultingUserId: urlParams.consultingUserId                
                     }));
-                    addDebugLine("🔄 Redirecting to OAuth with state...");
+                    console.log("🔄 Redirecting to OAuth...");
 
                     const authUrl = `https://login.${ENVIRONMENT}/oauth/authorize?` + 
                         $.param({
@@ -688,14 +491,18 @@
                             redirect_uri: REDIRECT_URI,
                             state: state
                         });
-                    window.location.replace(authUrl);
+                    
+                    // Use setTimeout to prevent immediate redirect issues
+                    setTimeout(() => {
+                        window.location.replace(authUrl);
+                    }, 100);
                 } else {
                     // We have a token, parameters should be in the state
                     if (!convId || !agentId || !customerId || !consultId) {
                         const errorMsg = "Missing parameters in OAuth callback. Cannot continue.";
-                        addDebugLine(`❌ ${errorMsg}`);
+                        console.log(`❌ ${errorMsg}`);
                         alert(errorMsg);
-                        throw new Error("Missing parameters in OAuth callback");
+                        return;
                     }
 
                     // Set global variables
@@ -706,182 +513,27 @@
                     consultingUserId = consultId;
                     BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
 
-                    console.log("Token obtained:", gToken);
-                    console.log("conversationId:", conversationId);
-                    console.log("agentParticipantId:", agentParticipantId);
-                    console.log("customerParticipantId:", customerParticipantId);
-                    console.log("consultingUserId:", consultingUserId);            
-
-                    // Initialize debug display - ONLY ONCE
-                    if (!window.debugInitialized) {
-                        window.debugInitialized = true;
-                        addDebugLine('🚀 Application initialized');
-                        addDebugLine(`📋 Conversation ID: ${conversationId}`);
-                        addDebugLine(`👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
-                        addDebugLine(`📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
-                        addDebugLine(`🔍 Page URL: ${window.location.href}`);
-                        addDebugLine(`🔍 Referrer: ${document.referrer}`);
-                        addDebugLine('✅ Ready for TSN Reset - Button is active!');
-                    } else {
-                        addDebugLine('⚠️ Application already initialized - this is a page reload!');
-                        addDebugLine(`🔍 Page URL: ${window.location.href}`);
-                        addDebugLine(`🔍 Referrer: ${document.referrer}`);
+                    console.log("✅ Authentication complete");
+                    console.log(`📋 Conversation ID: ${conversationId}`);
+                    console.log(`👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
+                    console.log(`📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
+                    console.log('✅ Ready for TSN Reset - Button is active!');
+                    
+                    // Clear hash to prevent re-processing
+                    if (window.location.hash) {
+                        window.history.replaceState(null, null, window.location.pathname + window.location.search);
                     }
                 }
             })();
 
-            // Use a more aggressive approach to prevent page navigation during monitoring
-            let originalAssign = window.location.assign;
-            let originalReplace = window.location.replace;
-            let originalReload = window.location.reload;
-            let originalHref = window.location.href;
-
-            // Store the original href setter
-            let originalHrefDescriptor = Object.getOwnPropertyDescriptor(window.location, 'href') || 
-                                       Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location), 'href');
-
-            // Override all location change methods
-            Object.defineProperty(window.location, 'href', {
-                get: function() { return window.location.toString(); },
-                set: function(val) {
-                    if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                        addDebugLine('🛑 Blocked location.href change during monitoring');
-                        return;
-                    }
-                    if (originalHrefDescriptor && originalHrefDescriptor.set) {
-                        originalHrefDescriptor.set.call(window.location, val);
-                    } else {
-                        window.location.assign(val);
-                    }
-                }
-            });
-
-            window.location.assign = function(url) {
-                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    addDebugLine('🛑 Blocked location.assign during monitoring');
-                    return;
-                }
-                return originalAssign.call(window.location, url);
-            };
-
-            window.location.replace = function(url) {
-                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    addDebugLine('🛑 Blocked location.replace during monitoring');
-                    return;
-                }
-                return originalReplace.call(window.location, url);
-            };
-
-            window.location.reload = function() {
-                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    addDebugLine('🛑 Blocked location.reload during monitoring');
-                    return;
-                }
-                return originalReload.call(window.location);
-            };
-
-            // Block iframe navigation attempts
-            if (window.parent !== window) {
-                addDebugLine('ℹ️ Running in iframe - setting up parent navigation blocks');
-                try {
-                    // Try to block parent frame navigation
-                    window.parent.addEventListener('beforeunload', function(event) {
-                        if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                            addDebugLine('🛑 Blocked parent frame navigation during monitoring');
-                            event.preventDefault();
-                            event.stopImmediatePropagation();
-                        }
-                    });
-                } catch (e) {
-                    addDebugLine('⚠️ Cannot access parent frame - cross-origin restrictions');
-                }
-            }
-
-            // Monitor for page unload but just log it
+            // Prevent page navigation during monitoring
             window.addEventListener('beforeunload', function(event) {
-                addDebugLine(`⚠️ Page unload detected - Reason: ${event.type} - WebSocket state: ${websocket ? websocket.readyState : 'null'}`);
-                
                 if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    addDebugLine('⚠️ Page unload during monitoring - WebSocket may be lost');
-                    // Try to save monitoring state to sessionStorage as backup
-                    try {
-                        sessionStorage.setItem('tsnMonitoringActive', 'true');
-                        sessionStorage.setItem('tsnConversationId', conversationId);
-                        sessionStorage.setItem('tsnAgentId', agentParticipantId);
-                        addDebugLine('💾 Saved monitoring state to sessionStorage');
-                    } catch (e) {
-                        addDebugLine('⚠️ Could not save to sessionStorage');
-                    }
-                }
-                // Don't prevent - just log
-            });
-
-            // Add more event listeners to debug what's causing reloads
-            window.addEventListener('pagehide', function(event) {
-                addDebugLine(`⚠️ Page hide detected - persisted: ${event.persisted}`);
-                if (event.persisted && isMonitoringParticipants) {
-                    addDebugLine('ℹ️ Page going into back/forward cache - WebSocket should remain active');
-                }
-            });
-
-            window.addEventListener('pageshow', function(event) {
-                addDebugLine(`⚠️ Page show detected - persisted: ${event.persisted}`);
-                if (event.persisted && isMonitoringParticipants) {
-                    addDebugLine('ℹ️ Page restored from back/forward cache - checking WebSocket state');
-                    if (websocket && websocket.readyState === WebSocket.OPEN) {
-                        addDebugLine('✅ WebSocket still connected after page restore');
-                    } else {
-                        addDebugLine('❌ WebSocket lost after page restore - may need to reconnect');
-                    }
-                }
-            });
-
-            // Prevent form submissions that might reload the page
-            document.addEventListener('submit', function(event) {
-                addDebugLine(`⚠️ Form submission detected - preventing default`);
-                event.preventDefault();
-                return false;
-            });
-
-            // Prevent any navigation attempts during monitoring
-            window.addEventListener('popstate', function(event) {
-                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    addDebugLine('🛑 Navigation attempt blocked during monitoring');
+                    console.log('⚠️ Page unload during monitoring - WebSocket may be lost');
                     event.preventDefault();
-                    history.pushState(null, null, window.location.href); // Stay on current page
-                    return false;
+                    event.returnValue = 'TSN Reset monitoring is active. Leaving will stop monitoring.';
+                    return 'TSN Reset monitoring is active. Leaving will stop monitoring.';
                 }
-            });
-
-            // Override window.location changes during monitoring
-            let originalPushState = history.pushState;
-            let originalReplaceState = history.replaceState;
-            
-            history.pushState = function() {
-                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    addDebugLine('🛑 Blocked pushState during monitoring');
-                    return;
-                }
-                return originalPushState.apply(history, arguments);
-            };
-            
-            history.replaceState = function() {
-                if (isMonitoringParticipants && websocket && websocket.readyState === WebSocket.OPEN) {
-                    addDebugLine('🛑 Blocked replaceState during monitoring');
-                    return;
-                }
-                return originalReplaceState.apply(history, arguments);
-            };
-
-            // Check if we're in an iframe that might be reloading
-            if (window.parent !== window) {
-                addDebugLine(`ℹ️ Running inside iframe - parent: ${window.parent.location.href}`);
-            }
-
-            // Add error handling for unhandled promise rejections
-            window.addEventListener('unhandledrejection', function(event) {
-                addDebugLine(`❌ Unhandled promise rejection: ${event.reason}`);
-                // Don't prevent default - just log
             });
         </script>
     </body>
