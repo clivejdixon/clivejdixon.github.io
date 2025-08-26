@@ -31,6 +31,8 @@
     <body>
         <div class="center">
             <button id="tsnResetButton" class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
+            <br><br>
+            <button class="action-button" onclick="clearSessionAndReload()" style="background-color: #666; font-size: 12px; padding: 5px 10px;">Clear Session & Reload</button>
         </div>
     
         <script>
@@ -160,9 +162,16 @@
                 }
             }
 
+            // Helper function for manual session clearing
+            window.clearSessionAndReload = function() {
+                console.log('[DEBUG] 🧹 Manual session clear requested');
+                clearSessionData();
+                location.reload();
+            };
+
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 75');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 76');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
@@ -179,7 +188,7 @@
                 
                 sequenceRunning = true;
                 disableButton();
-                console.log('[DEBUG] 🚀 75 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 76 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -517,10 +526,44 @@
             (function initializeApp() {
                 console.log('[DEBUG] 🚀 Application starting...');
                 
-                // First check if we have saved session data
+                // Check URL parameters first to see if we have new conversation data
+                const urlParams = getParametersFromUrl();
+                const hasUrlParams = urlParams.conversationId && urlParams.agentParticipantId && 
+                                   urlParams.customerParticipantId && urlParams.consultingUserId;
+                
+                // Check if we have saved session data
                 const sessionData = loadSessionData();
-                if (sessionData && sessionData.token) {
-                    console.log('[DEBUG] 📂 Restoring from session data...');
+                
+                // If we have URL parameters, check if they match session data
+                if (hasUrlParams && sessionData && sessionData.token) {
+                    if (sessionData.conversationId === urlParams.conversationId) {
+                        // URL matches session - restore from session
+                        console.log('[DEBUG] 📂 URL matches session, restoring from session data...');
+                        gToken = sessionData.token;
+                        conversationId = sessionData.conversationId;
+                        agentParticipantId = sessionData.agentParticipantId;
+                        customerParticipantId = sessionData.customerParticipantId;
+                        consultingUserId = sessionData.consultingUserId;
+                        BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
+                        
+                        console.log("[DEBUG] ✅ Session restored");
+                        console.log(`[DEBUG] 📋 Conversation ID: ${conversationId}`);
+                        console.log(`[DEBUG] 👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
+                        console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
+                        console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
+                        
+                        // Check if we need to resume monitoring
+                        setTimeout(checkAndResumePendingMonitoring, 1000);
+                        return;
+                    } else {
+                        // URL doesn't match session - clear old session and start OAuth
+                        console.log('[DEBUG] ⚠️ URL conversation ID differs from session - clearing old session');
+                        console.log(`[DEBUG] 📊 URL: ${urlParams.conversationId} vs Session: ${sessionData.conversationId}`);
+                        clearSessionData();
+                    }
+                } else if (sessionData && sessionData.token && !hasUrlParams) {
+                    // Only session data, no URL params - use session
+                    console.log('[DEBUG] 📂 Restoring from session data (no URL params)...');
                     gToken = sessionData.token;
                     conversationId = sessionData.conversationId;
                     agentParticipantId = sessionData.agentParticipantId;
