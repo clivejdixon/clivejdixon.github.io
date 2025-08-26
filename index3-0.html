@@ -52,7 +52,7 @@
 
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 71');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 72');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
@@ -74,7 +74,7 @@
                 
                 sequenceRunning = true;
 
-                console.log('[DEBUG] 🚀 71 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 72 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -185,10 +185,15 @@
                     );
                     
                     // Wait a bit for connection to establish
+                    console.log('[DEBUG] ⏳ Starting 58-second wait...');
+                    console.log('[DEBUG] ⏰ Wait started at:', new Date().toLocaleTimeString());
                     await sleep(58000);
+                    console.log('[DEBUG] ⏰ Wait completed at:', new Date().toLocaleTimeString());
                     console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
                     // Start monitoring - store the interval ID
                     startParticipantMonitoring();
+                    
+                    return; // Exit early since we've completed the sequence
                                         
                 } catch (error) {
                     console.error("[DEBUG] Sequence error:", error);
@@ -373,6 +378,12 @@
             (function initializeApp() {
                 console.log('[DEBUG] 🚀 Application starting...');
                 
+                // Check if we already have global variables set (to prevent re-initialization)
+                if (gToken && conversationId && agentParticipantId && customerParticipantId && consultingUserId) {
+                    console.log('[DEBUG] ℹ️ Already initialized, skipping auth flow');
+                    return;
+                }
+                
                 // First try to get parameters from OAuth callback (hash)
                 let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
 
@@ -387,6 +398,12 @@
                         const errorMsg = "Missing parameters in the URL. Cannot continue.";
                         console.log(`[DEBUG] ❌ ${errorMsg}`);
                         alert(errorMsg);
+                        return;
+                    }
+
+                    // Check if we're already in the middle of OAuth (to prevent loops)
+                    if (window.location.href.includes('oauth_redirect_in_progress')) {
+                        console.log('[DEBUG] ⚠️ OAuth redirect already in progress, waiting...');
                         return;
                     }
 
@@ -434,9 +451,11 @@
                     console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
                     console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
                                         
-                    // Clear hash to prevent re-processing
+                    // Clear hash to prevent re-processing, but keep URL params
                     if (window.location.hash) {
-                        window.history.replaceState(null, null, window.location.pathname + window.location.search);
+                        const baseUrl = window.location.pathname + window.location.search;
+                        console.log('[DEBUG] 🧹 Cleaning up URL hash...');
+                        window.history.replaceState(null, null, baseUrl);
                     }
                 }
             })();
