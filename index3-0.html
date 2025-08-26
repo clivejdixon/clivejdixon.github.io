@@ -35,6 +35,7 @@
             const SPEAK_TO_INITIAL = 'BOTH';
             const SPEAK_TO_FINAL = 'CONFERENCE';
             const WAITTIME = 1000;
+            const SESSION_KEY = 'tsn_reset_session';
 
             // Global variables
             let eventBridgeId = null;
@@ -50,19 +51,88 @@
             let consultingUserId = null;
             let BASE_API_URL = null;
 
+            // Session management functions
+            function saveSessionData(data) {
+                try {
+                    const sessionData = {
+                        ...data,
+                        timestamp: Date.now()
+                    };
+                    window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+                    console.log('[DEBUG] 💾 Session data saved');
+                } catch (e) {
+                    console.warn('[DEBUG] ⚠️ Could not save session data:', e);
+                }
+            }
+
+            function loadSessionData() {
+                try {
+                    const data = window.sessionStorage.getItem(SESSION_KEY);
+                    if (data) {
+                        const parsed = JSON.parse(data);
+                        console.log('[DEBUG] 📂 Session data loaded:', parsed);
+                        return parsed;
+                    }
+                } catch (e) {
+                    console.warn('[DEBUG] ⚠️ Could not load session data:', e);
+                }
+                return null;
+            }
+
+            function clearSessionData() {
+                try {
+                    window.sessionStorage.removeItem(SESSION_KEY);
+                    console.log('[DEBUG] 🗑️ Session data cleared');
+                } catch (e) {
+                    console.warn('[DEBUG] ⚠️ Could not clear session data:', e);
+                }
+            }
+
+            // Check for pending monitoring state and resume if needed
+            function checkAndResumePendingMonitoring() {
+                const sessionData = loadSessionData();
+                if (sessionData && sessionData.pendingMonitoring) {
+                    const timeSinceHold = Date.now() - sessionData.holdTimestamp;
+                    const remainingWait = 58000 - timeSinceHold;
+                    
+                    console.log('[DEBUG] 🔄 Found pending monitoring session');
+                    console.log('[DEBUG] ⏰ Time since hold:', Math.floor(timeSinceHold / 1000), 'seconds');
+                    
+                    if (remainingWait > 0) {
+                        console.log('[DEBUG] ⏳ Resuming wait for', Math.floor(remainingWait / 1000), 'more seconds...');
+                        setTimeout(() => {
+                            console.log('[DEBUG] 🌉 Starting participant monitoring (resumed)...');
+                            startParticipantMonitoring();
+                            // Update session to indicate monitoring is active
+                            saveSessionData({
+                                ...sessionData,
+                                pendingMonitoring: false,
+                                monitoringActive: true
+                            });
+                        }, remainingWait);
+                    } else {
+                        console.log('[DEBUG] 🌉 Wait period already elapsed, starting monitoring immediately...');
+                        startParticipantMonitoring();
+                        saveSessionData({
+                            ...sessionData,
+                            pendingMonitoring: false,
+                            monitoringActive: true
+                        });
+                    }
+                } else if (sessionData && sessionData.monitoringActive) {
+                    console.log('[DEBUG] 🔄 Resuming active monitoring...');
+                    startParticipantMonitoring();
+                }
+            }
+
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 72');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 73');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
                     const errorMsg = 'Missing required parameters. Please ensure OAuth flow completed successfully.';
                     console.error('[DEBUG] ❌', errorMsg);
-                    console.log('[DEBUG] ❌ conversationId:', conversationId);
-                    console.log('[DEBUG] ❌ agentParticipantId:', agentParticipantId);
-                    console.log('[DEBUG] ❌ customerParticipantId:', customerParticipantId);
-                    console.log('[DEBUG] ❌ consultingUserId:', consultingUserId);
-                    console.log('[DEBUG] ❌ gToken:', gToken);
                     return;
                 }
                 
@@ -73,13 +143,11 @@
                 }
                 
                 sequenceRunning = true;
-
-                console.log('[DEBUG] 🚀 72 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 73 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
                     try {
-                        // Step 1a: POST consult
                         await makeApiCall(
                             `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
                             'POST',
@@ -96,7 +164,6 @@
                         console.log('[DEBUG] ⚠️ Step 1a failed (likely already in conference), trying fallback approach...');
                         
                         try {
-                            // Step 1b: POST participants (fallback)
                             await makeApiCall(
                                 `${BASE_API_URL}/participants`,
                                 'POST',
@@ -107,11 +174,9 @@
                             );
                             console.log('[DEBUG] ✅ Step 1b fallback succeeded - skipping to Step 3 (conference already active)');
                             
-                            // Skip Steps 2 and go directly to Step 3 since we're already in conference mode
                             console.log('[DEBUG] ⏳ Waiting 1 second before final step...');
                             await sleep(WAITTIME);
                             
-                            // Step 3: PATCH participant held
                             await makeApiCall(
                                 `${BASE_API_URL}/participants/${agentParticipantId}`,
                                 'PATCH',
@@ -121,26 +186,37 @@
                                 'STEP 3: Placing agent on hold'
                             );
 
-                            // Wait a bit for connection to establish
-                            await sleep(58000);
-                            console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
-                            // Start monitoring - store the interval ID
-                            startParticipantMonitoring();
+                            // Save state for monitoring
+                            saveSessionData({
+                                conversationId,
+                                agentParticipantId,
+                                customerParticipantId,
+                                consultingUserId,
+                                token: gToken,
+                                holdTimestamp: Date.now(),
+                                pendingMonitoring: true
+                            });
+
+                            console.log('[DEBUG] ⏳ Starting 58-second wait...');
+                            console.log('[DEBUG] ⏰ Wait started at:', new Date().toLocaleTimeString());
                             
-                            return; // Exit early since we've completed the sequence
+                            setTimeout(() => {
+                                console.log('[DEBUG] ⏰ Wait completed at:', new Date().toLocaleTimeString());
+                                console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
+                                startParticipantMonitoring();
+                            }, 58000);
+                            
+                            return;
                         } catch (fallbackError) {
                             console.log('[DEBUG] ❌ Both Step 1a and 1b failed');
                             throw fallbackError;
                         }
                     }
 
-                    // Wait time pause
                     console.log('[DEBUG] ⏳ Waiting 1 second...');
                     await sleep(WAITTIME);
 
-                    // Step 2: Try PATCH consult first, fallback to POST participants
                     try {
-                        // Step 2a: PATCH consult
                         await makeApiCall(
                             `${BASE_API_URL}/participants/${customerParticipantId}/consult`,
                             'PATCH',
@@ -154,7 +230,6 @@
                         console.log('[DEBUG] ⚠️ Step 2a failed, trying fallback approach...');
                         
                         try {
-                            // Step 2b: POST participants (fallback)
                             await makeApiCall(
                                 `${BASE_API_URL}/participants`,
                                 'POST',
@@ -170,11 +245,9 @@
                         }
                     }
 
-                    // Wait time pause
                     console.log('[DEBUG] ⏳ Waiting 1 second...');
                     await sleep(WAITTIME);
 
-                    // Step 3: PATCH participant held
                     await makeApiCall(
                         `${BASE_API_URL}/participants/${agentParticipantId}`,
                         'PATCH',
@@ -184,22 +257,30 @@
                         'STEP 3: Placing agent on hold'
                     );
                     
-                    // Wait a bit for connection to establish
+                    // Save state for monitoring
+                    saveSessionData({
+                        conversationId,
+                        agentParticipantId,
+                        customerParticipantId,
+                        consultingUserId,
+                        token: gToken,
+                        holdTimestamp: Date.now(),
+                        pendingMonitoring: true
+                    });
+
                     console.log('[DEBUG] ⏳ Starting 58-second wait...');
                     console.log('[DEBUG] ⏰ Wait started at:', new Date().toLocaleTimeString());
-                    await sleep(58000);
-                    console.log('[DEBUG] ⏰ Wait completed at:', new Date().toLocaleTimeString());
-                    console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
-                    // Start monitoring - store the interval ID
-                    startParticipantMonitoring();
                     
-                    return; // Exit early since we've completed the sequence
+                    setTimeout(() => {
+                        console.log('[DEBUG] ⏰ Wait completed at:', new Date().toLocaleTimeString());
+                        console.log('[DEBUG] 🌉 Start monitoring for dropped customer...');
+                        startParticipantMonitoring();
+                    }, 58000);
                                         
                 } catch (error) {
                     console.error("[DEBUG] Sequence error:", error);
                     console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
                 } finally {
-                    // Always reset the sequence running flag
                     sequenceRunning = false;
                 }
             };
@@ -213,19 +294,16 @@
                 isMonitoringParticipants = true;
                 console.log('[DEBUG] 🔄 Starting participant monitoring...');
                 
-                // Store the interval ID for cleanup
                 monitoringInterval = setInterval(async () => {
                     try {
                         const participantCount = await checkParticipantCount();
                         
-                        // If participant count drops below 3, take agent off hold
                         if (participantCount < 3) {
                             console.log('[DEBUG] 🎯 Participant count dropped below 3, taking agent off hold...');
                             await takeAgentOffHold();
                         }
                     } catch (error) {
                         console.error('[DEBUG] ❌ Error during monitoring:', error);
-                        // Continue monitoring even if one check fails
                     }
                 }, 2000);
             }
@@ -233,7 +311,7 @@
             async function checkParticipantCount() {
                 try {
                     const response = await makeApiCall(
-                        `${BASE_API_URL}`, // Use the full BASE_API_URL, not relative path
+                        `${BASE_API_URL}`,
                         'GET', 
                         null,
                         'Checking participant count'
@@ -264,10 +342,8 @@
                     
                     console.log('[DEBUG] 🎉 Agent taken off hold - TSN Reset sequence complete!');
                     
-                    // Clean up monitoring
-                    setTimeout(() => {
-                        cleanupMonitoring();
-                    }, 2000);
+                    cleanupMonitoring();
+                    clearSessionData();
                     
                 } catch (error) {
                     console.error("[DEBUG] ❌ Error taking agent off hold:", error);
@@ -283,7 +359,6 @@
                 isMonitoringParticipants = false;
             }
 
-            // Helper Functions
             function getTokenAndStateFromHash() {
                 const hash = window.location.hash.substring(1);
                 const params = new URLSearchParams(hash);
@@ -362,7 +437,6 @@
                     return response;
                 } catch (error) {
                     console.error(`[DEBUG] ❌ ${description} - ERROR:`, error);
-                    // Enhanced error logging
                     console.error(`[DEBUG] ❌ ${description} - ERROR:`, {
                         status: error.status,
                      statusText: error.statusText,
@@ -378,20 +452,34 @@
             (function initializeApp() {
                 console.log('[DEBUG] 🚀 Application starting...');
                 
-                // Check if we already have global variables set (to prevent re-initialization)
-                if (gToken && conversationId && agentParticipantId && customerParticipantId && consultingUserId) {
-                    console.log('[DEBUG] ℹ️ Already initialized, skipping auth flow');
+                // First check if we have saved session data
+                const sessionData = loadSessionData();
+                if (sessionData && sessionData.token) {
+                    console.log('[DEBUG] 📂 Restoring from session data...');
+                    gToken = sessionData.token;
+                    conversationId = sessionData.conversationId;
+                    agentParticipantId = sessionData.agentParticipantId;
+                    customerParticipantId = sessionData.customerParticipantId;
+                    consultingUserId = sessionData.consultingUserId;
+                    BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
+                    
+                    console.log("[DEBUG] ✅ Session restored");
+                    console.log(`[DEBUG] 📋 Conversation ID: ${conversationId}`);
+                    console.log(`[DEBUG] 👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
+                    console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
+                    console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
+                    
+                    // Check if we need to resume monitoring
+                    setTimeout(checkAndResumePendingMonitoring, 1000);
                     return;
                 }
                 
-                // First try to get parameters from OAuth callback (hash)
+                // No session data, proceed with OAuth flow
                 let { token, conversationId: convId, agentParticipantId: agentId, customerParticipantId: customerId, consultingUserId: consultId } = getTokenAndStateFromHash();
 
-                // If no token, we need to start OAuth flow
                 if (!token) {
                     console.log('[DEBUG] 🔑 No token found, checking URL parameters...');
                     
-                    // Get parameters from URL
                     const urlParams = getParametersFromUrl();
                     
                     if (!urlParams.conversationId || !urlParams.agentParticipantId || !urlParams.customerParticipantId || !urlParams.consultingUserId) {
@@ -401,13 +489,6 @@
                         return;
                     }
 
-                    // Check if we're already in the middle of OAuth (to prevent loops)
-                    if (window.location.href.includes('oauth_redirect_in_progress')) {
-                        console.log('[DEBUG] ⚠️ OAuth redirect already in progress, waiting...');
-                        return;
-                    }
-
-                    // Store parameters in state for OAuth flow
                     const state = btoa(JSON.stringify({
                         conversationId: urlParams.conversationId,
                         agentParticipantId: urlParams.agentParticipantId,
@@ -424,12 +505,10 @@
                             state: state
                         });
                     
-                    // Use setTimeout to prevent immediate redirect issues
                     setTimeout(() => {
                         window.location.replace(authUrl);
                     }, 1000);
                 } else {
-                    // We have a token, parameters should be in the state
                     if (!convId || !agentId || !customerId || !consultId) {
                         const errorMsg = "Missing parameters in OAuth callback. Cannot continue.";
                         console.log(`[DEBUG] ❌ ${errorMsg}`);
@@ -437,7 +516,6 @@
                         return;
                     }
 
-                    // Set global variables
                     gToken = token;
                     conversationId = convId;
                     agentParticipantId = agentId;
@@ -445,26 +523,29 @@
                     consultingUserId = consultId;
                     BASE_API_URL = `https://api.${ENVIRONMENT}/api/v2/conversations/calls/${conversationId}`;
 
+                    // Save to session storage for persistence
+                    saveSessionData({
+                        token: gToken,
+                        conversationId,
+                        agentParticipantId,
+                        customerParticipantId,
+                        consultingUserId
+                    });
+
                     console.log("[DEBUG] ✅ Authentication complete");
                     console.log(`[DEBUG] 📋 Conversation ID: ${conversationId}`);
                     console.log(`[DEBUG] 👤 Agent ID: ${agentParticipantId.substring(0,8)}...`);
                     console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
                     console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
-                                        
-                    // Clear hash to prevent re-processing, but keep URL params
-                    if (window.location.hash) {
-                        const baseUrl = window.location.pathname + window.location.search;
-                        console.log('[DEBUG] 🧹 Cleaning up URL hash...');
-                        window.history.replaceState(null, null, baseUrl);
-                    }
+                    
+                    // DON'T clear the hash - let it stay to avoid page reload
+                    console.log('[DEBUG] 🔒 Keeping hash to prevent reload');
                 }
             })();
 
-            // Clean up monitoring if page is being unloaded
             window.addEventListener('beforeunload', function(event) {
                 if (isMonitoringParticipants) {
-                    console.log('[DEBUG] ⚠️ Page unload during monitoring - cleaning up');
-                    cleanupMonitoring();
+                    console.log('[DEBUG] ⚠️ Page unload during monitoring - session data preserved');
                 }
             });
         </script>
