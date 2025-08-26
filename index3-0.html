@@ -17,6 +17,12 @@
                 margin-top: 0px;
             }
             
+            .action-button:disabled {
+                background-color: #555;
+                color: #ccc;
+                cursor: not-allowed;
+            }
+            
             .center {
                 text-align: center;
             }
@@ -24,7 +30,7 @@
     </head>
     <body>
         <div class="center">
-            <button class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
+            <button id="tsnResetButton" class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
         </div>
     
         <script>
@@ -42,6 +48,8 @@
             let isMonitoringParticipants = false;
             let sequenceRunning = false;
             let monitoringInterval = null;
+            let monitoringStartTime = null;
+            let apiCallCount = 0;
             
             // Global parameters that will be set after authentication
             let gToken = null;
@@ -98,6 +106,9 @@
                     console.log('[DEBUG] 🔄 Found pending monitoring session');
                     console.log('[DEBUG] ⏰ Time since hold:', Math.floor(timeSinceHold / 1000), 'seconds');
                     
+                    // Disable the button while monitoring is pending or active
+                    document.getElementById('tsnResetButton').disabled = true;
+                    
                     if (remainingWait > 0) {
                         console.log('[DEBUG] ⏳ Resuming wait for', Math.floor(remainingWait / 1000), 'more seconds...');
                         setTimeout(() => {
@@ -121,18 +132,25 @@
                     }
                 } else if (sessionData && sessionData.monitoringActive) {
                     console.log('[DEBUG] 🔄 Resuming active monitoring...');
+                    // Disable the button while monitoring is active
+                    document.getElementById('tsnResetButton').disabled = true;
                     startParticipantMonitoring();
                 }
             }
 
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 73');
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 74');
+                
+                // Disable the button when sequence starts
+                document.getElementById('tsnResetButton').disabled = true;
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
                     const errorMsg = 'Missing required parameters. Please ensure OAuth flow completed successfully.';
                     console.error('[DEBUG] ❌', errorMsg);
+                    // Re-enable button if parameters are missing
+                    document.getElementById('tsnResetButton').disabled = false;
                     return;
                 }
                 
@@ -143,7 +161,7 @@
                 }
                 
                 sequenceRunning = true;
-                console.log('[DEBUG] 🚀 73 Starting TSN Reset sequence...');
+                console.log('[DEBUG] 🚀 74 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -280,6 +298,8 @@
                 } catch (error) {
                     console.error("[DEBUG] Sequence error:", error);
                     console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
+                    // Re-enable button on error
+                    document.getElementById('tsnResetButton').disabled = false;
                 } finally {
                     sequenceRunning = false;
                 }
@@ -292,6 +312,8 @@
                 }
                 
                 isMonitoringParticipants = true;
+                monitoringStartTime = Date.now();
+                apiCallCount = 0;
                 console.log('[DEBUG] 🔄 Starting participant monitoring...');
                 
                 monitoringInterval = setInterval(async () => {
@@ -299,7 +321,9 @@
                         const participantCount = await checkParticipantCount();
                         
                         if (participantCount < 3) {
-                            console.log('[DEBUG] 🎯 Participant count dropped below 3, taking agent off hold...');
+                            const elapsedSeconds = Math.floor((Date.now() - monitoringStartTime) / 1000);
+                            const totalWaitTime = 58 + (2 * apiCallCount);
+                            console.log(`[DEBUG] 🎯 Participant count dropped below 3 after ${elapsedSeconds} seconds (58 + ${2 * apiCallCount} = ${totalWaitTime} seconds)`);
                             await takeAgentOffHold();
                         }
                     } catch (error) {
@@ -309,6 +333,7 @@
             }
 
             async function checkParticipantCount() {
+                apiCallCount++;
                 try {
                     const response = await makeApiCall(
                         `${BASE_API_URL}`,
@@ -342,11 +367,16 @@
                     
                     console.log('[DEBUG] 🎉 Agent taken off hold - TSN Reset sequence complete!');
                     
+                    // Re-enable the button after sequence is complete
+                    document.getElementById('tsnResetButton').disabled = false;
+                    
                     cleanupMonitoring();
                     clearSessionData();
                     
                 } catch (error) {
                     console.error("[DEBUG] ❌ Error taking agent off hold:", error);
+                    // Re-enable the button even if there's an error
+                    document.getElementById('tsnResetButton').disabled = false;
                 }
             }
 
@@ -469,8 +499,15 @@
                     console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
                     console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
                     
-                    // Check if we need to resume monitoring
-                    setTimeout(checkAndResumePendingMonitoring, 1000);
+                    // Check if we need to resume monitoring and update button state
+                    setTimeout(() => {
+                        checkAndResumePendingMonitoring();
+                        
+                        // Disable button if monitoring is active or pending
+                        if (sessionData.pendingMonitoring || sessionData.monitoringActive) {
+                            document.getElementById('tsnResetButton').disabled = true;
+                        }
+                    }, 1000);
                     return;
                 }
                 
