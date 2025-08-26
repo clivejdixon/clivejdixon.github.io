@@ -18,7 +18,7 @@
             }
             
             .action-button:disabled {
-                background-color: #555;
+                background-color: #666;
                 color: #ccc;
                 cursor: not-allowed;
             }
@@ -48,7 +48,7 @@
             let isMonitoringParticipants = false;
             let sequenceRunning = false;
             let monitoringInterval = null;
-            let monitoringStartTime = null;
+            let holdStartTime = null;
             let apiCallCount = 0;
             
             // Global parameters that will be set after authentication
@@ -58,6 +58,21 @@
             let customerParticipantId = null;
             let consultingUserId = null;
             let BASE_API_URL = null;
+
+            // Button state management
+            function disableButton() {
+                const button = document.getElementById('tsnResetButton');
+                button.disabled = true;
+                button.textContent = 'TSN Reset Running...';
+                console.log('[DEBUG] 🔒 Button disabled');
+            }
+
+            function enableButton() {
+                const button = document.getElementById('tsnResetButton');
+                button.disabled = false;
+                button.textContent = 'TSN Reset (Conference)';
+                console.log('[DEBUG] 🔓 Button enabled');
+            }
 
             // Session management functions
             function saveSessionData(data) {
@@ -106,8 +121,10 @@
                     console.log('[DEBUG] 🔄 Found pending monitoring session');
                     console.log('[DEBUG] ⏰ Time since hold:', Math.floor(timeSinceHold / 1000), 'seconds');
                     
-                    // Disable the button while monitoring is pending or active
-                    document.getElementById('tsnResetButton').disabled = true;
+                    // Disable button if we're resuming a sequence
+                    disableButton();
+                    holdStartTime = sessionData.holdTimestamp;
+                    apiCallCount = sessionData.apiCallCount || 0;
                     
                     if (remainingWait > 0) {
                         console.log('[DEBUG] ⏳ Resuming wait for', Math.floor(remainingWait / 1000), 'more seconds...');
@@ -118,7 +135,9 @@
                             saveSessionData({
                                 ...sessionData,
                                 pendingMonitoring: false,
-                                monitoringActive: true
+                                monitoringActive: true,
+                                holdTimestamp: holdStartTime,
+                                apiCallCount: apiCallCount
                             });
                         }, remainingWait);
                     } else {
@@ -127,30 +146,28 @@
                         saveSessionData({
                             ...sessionData,
                             pendingMonitoring: false,
-                            monitoringActive: true
+                            monitoringActive: true,
+                            holdTimestamp: holdStartTime,
+                            apiCallCount: apiCallCount
                         });
                     }
                 } else if (sessionData && sessionData.monitoringActive) {
                     console.log('[DEBUG] 🔄 Resuming active monitoring...');
-                    // Disable the button while monitoring is active
-                    document.getElementById('tsnResetButton').disabled = true;
+                    disableButton();
+                    holdStartTime = sessionData.holdTimestamp;
+                    apiCallCount = sessionData.apiCallCount || 0;
                     startParticipantMonitoring();
                 }
             }
 
             // MAIN SEQUENCE FUNCTION
             window.startSequence = async function() {
-                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 74');
-                
-                // Disable the button when sequence starts
-                document.getElementById('tsnResetButton').disabled = true;
+                console.log('[DEBUG] 🖱️ TSN Reset button clicked! 75');
                 
                 // Check if we have the required parameters
                 if (!gToken || !conversationId || !agentParticipantId || !customerParticipantId || !consultingUserId) {
                     const errorMsg = 'Missing required parameters. Please ensure OAuth flow completed successfully.';
                     console.error('[DEBUG] ❌', errorMsg);
-                    // Re-enable button if parameters are missing
-                    document.getElementById('tsnResetButton').disabled = false;
                     return;
                 }
                 
@@ -161,7 +178,8 @@
                 }
                 
                 sequenceRunning = true;
-                console.log('[DEBUG] 🚀 74 Starting TSN Reset sequence...');
+                disableButton();
+                console.log('[DEBUG] 🚀 75 Starting TSN Reset sequence...');
 
                 try {
                     // Step 1: Try POST consult first, fallback to POST participants
@@ -204,6 +222,10 @@
                                 'STEP 3: Placing agent on hold'
                             );
 
+                            // Record hold start time and reset API call count
+                            holdStartTime = Date.now();
+                            apiCallCount = 0;
+
                             // Save state for monitoring
                             saveSessionData({
                                 conversationId,
@@ -211,8 +233,9 @@
                                 customerParticipantId,
                                 consultingUserId,
                                 token: gToken,
-                                holdTimestamp: Date.now(),
-                                pendingMonitoring: true
+                                holdTimestamp: holdStartTime,
+                                pendingMonitoring: true,
+                                apiCallCount: apiCallCount
                             });
 
                             console.log('[DEBUG] ⏳ Starting 58-second wait...');
@@ -275,6 +298,10 @@
                         'STEP 3: Placing agent on hold'
                     );
                     
+                    // Record hold start time and reset API call count
+                    holdStartTime = Date.now();
+                    apiCallCount = 0;
+                    
                     // Save state for monitoring
                     saveSessionData({
                         conversationId,
@@ -282,8 +309,9 @@
                         customerParticipantId,
                         consultingUserId,
                         token: gToken,
-                        holdTimestamp: Date.now(),
-                        pendingMonitoring: true
+                        holdTimestamp: holdStartTime,
+                        pendingMonitoring: true,
+                        apiCallCount: apiCallCount
                     });
 
                     console.log('[DEBUG] ⏳ Starting 58-second wait...');
@@ -298,8 +326,7 @@
                 } catch (error) {
                     console.error("[DEBUG] Sequence error:", error);
                     console.log(`[DEBUG] 💥 SEQUENCE FAILED: ${error.responseText || error.message}`);
-                    // Re-enable button on error
-                    document.getElementById('tsnResetButton').disabled = false;
+                    enableButton(); // Re-enable button on failure
                 } finally {
                     sequenceRunning = false;
                 }
@@ -312,8 +339,6 @@
                 }
                 
                 isMonitoringParticipants = true;
-                monitoringStartTime = Date.now();
-                apiCallCount = 0;
                 console.log('[DEBUG] 🔄 Starting participant monitoring...');
                 
                 monitoringInterval = setInterval(async () => {
@@ -321,9 +346,8 @@
                         const participantCount = await checkParticipantCount();
                         
                         if (participantCount < 3) {
-                            const elapsedSeconds = Math.floor((Date.now() - monitoringStartTime) / 1000);
-                            const totalWaitTime = 58 + (2 * apiCallCount);
-                            console.log(`[DEBUG] 🎯 Participant count dropped below 3 after ${elapsedSeconds} seconds (58 + ${2 * apiCallCount} = ${totalWaitTime} seconds)`);
+                            const totalTimeSeconds = Math.floor((Date.now() - holdStartTime) / 1000);
+                            console.log(`[DEBUG] 🎯 Participant count dropped below 3 after ${totalTimeSeconds} seconds from hold start (58s wait + ${apiCallCount * 2}s API calls), taking agent off hold...`);
                             await takeAgentOffHold();
                         }
                     } catch (error) {
@@ -333,8 +357,9 @@
             }
 
             async function checkParticipantCount() {
-                apiCallCount++;
                 try {
+                    apiCallCount++; // Increment API call counter
+                    
                     const response = await makeApiCall(
                         `${BASE_API_URL}`,
                         'GET', 
@@ -346,7 +371,17 @@
                         p.state === 'connected' || p.state === 'alerting'
                     );
                     
-                    console.log(`[DEBUG] Current participant count: ${activeParticipants.length}`);
+                    console.log(`[DEBUG] Current participant count: ${activeParticipants.length} (API call #${apiCallCount})`);
+                    
+                    // Update session data with current API call count
+                    const sessionData = loadSessionData();
+                    if (sessionData) {
+                        saveSessionData({
+                            ...sessionData,
+                            apiCallCount: apiCallCount
+                        });
+                    }
+                    
                     return activeParticipants.length;
                 } catch (error) {
                     console.error('[DEBUG] ❌ Error checking participant count:', error);
@@ -367,16 +402,13 @@
                     
                     console.log('[DEBUG] 🎉 Agent taken off hold - TSN Reset sequence complete!');
                     
-                    // Re-enable the button after sequence is complete
-                    document.getElementById('tsnResetButton').disabled = false;
-                    
                     cleanupMonitoring();
                     clearSessionData();
+                    enableButton(); // Re-enable button when complete
                     
                 } catch (error) {
                     console.error("[DEBUG] ❌ Error taking agent off hold:", error);
-                    // Re-enable the button even if there's an error
-                    document.getElementById('tsnResetButton').disabled = false;
+                    enableButton(); // Re-enable button on error
                 }
             }
 
@@ -387,6 +419,9 @@
                     monitoringInterval = null;
                 }
                 isMonitoringParticipants = false;
+                // Reset timing variables
+                holdStartTime = null;
+                apiCallCount = 0;
             }
 
             function getTokenAndStateFromHash() {
@@ -499,15 +534,8 @@
                     console.log(`[DEBUG] 📞 Customer ID: ${customerParticipantId.substring(0,8)}...`);
                     console.log('[DEBUG] ✅ Ready for TSN Reset - Button is active!');
                     
-                    // Check if we need to resume monitoring and update button state
-                    setTimeout(() => {
-                        checkAndResumePendingMonitoring();
-                        
-                        // Disable button if monitoring is active or pending
-                        if (sessionData.pendingMonitoring || sessionData.monitoringActive) {
-                            document.getElementById('tsnResetButton').disabled = true;
-                        }
-                    }, 1000);
+                    // Check if we need to resume monitoring
+                    setTimeout(checkAndResumePendingMonitoring, 1000);
                     return;
                 }
                 
