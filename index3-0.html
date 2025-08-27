@@ -319,10 +319,16 @@
                     
                     state.sequenceRunning = true;
                     button.disable();
-                    utils.logDebug('77 Starting TSN Reset sequence...');
+                    utils.logDebug('78 Starting TSN Reset sequence...');
 
                     try {
-                        await sequence.step1();
+                        const usedFallback = await sequence.step1();
+                        if (usedFallback) {
+                            // Fallback path already completed - exit here
+                            return;
+                        }
+                        
+                        // Normal path continues
                         await utils.sleep(CONFIG.WAIT_TIME);
                         await sequence.step2();
                         await utils.sleep(CONFIG.WAIT_TIME);
@@ -349,8 +355,11 @@
                             },
                             'STEP 1a: Creating consultation'
                         );
+                        return false; // Normal path
                     } catch (error) {
-                        utils.logDebug('Step 1a failed, trying fallback approach...');
+                        utils.logDebug('Step 1a failed, using fallback approach (conference already active)...');
+                        
+                        // Check if we're already in a conference by trying to add another queue participant
                         await api.call(
                             `${state.BASE_API_URL}/participants`,
                             'POST',
@@ -358,10 +367,10 @@
                             'STEP 1b: Adding queue to conference (fallback)'
                         );
                         
-                        // Skip to step 3 for fallback path
+                        utils.logDebug('Conference already active - skipping to hold step');
                         await utils.sleep(CONFIG.WAIT_TIME);
                         await sequence.step3();
-                        return;
+                        return true; // Fallback path completed
                     }
                 },
 
@@ -411,7 +420,7 @@
                         apiCallCount: state.apiCallCount
                     });
 
-                    utils.logDebug('Starting 59-second wait...');
+                    utils.logDebug('Starting 58-second wait...');
                     setTimeout(() => {
                         utils.logDebug('Wait completed, starting monitoring...');
                         monitoring.start();
