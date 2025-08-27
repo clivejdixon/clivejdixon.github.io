@@ -235,11 +235,24 @@
 
                 complete: async () => {
                     try {
+                        // Resume recording before taking agent off hold
+                        try {
+                            await api.call(
+                                `https://api.${CONFIG.ENVIRONMENT}/api/v2/conversations/calls/${state.conversationId}`,
+                                'PATCH',
+                                { recordingState: 'ACTIVE' },
+                                'FINAL STEP A: Resuming recording'
+                            );
+                        } catch (error) {
+                            utils.logDebug('Warning: Failed to resume recording:', error);
+                            // Continue execution even if recording resume fails
+                        }
+                        
                         await api.call(
                             `${state.BASE_API_URL}/participants/${state.agentParticipantId}`,
                             'PATCH',
                             { held: false },
-                            'FINAL STEP: Taking agent off hold'
+                            'FINAL STEP B: Taking agent off hold'
                         );
                         
                         utils.logDebug('Agent taken off hold - TSN Reset sequence complete!');
@@ -247,7 +260,7 @@
                         session.clear();
                         button.enable();
                     } catch (error) {
-                        utils.logDebug('Error taking agent off hold:', error);
+                        utils.logDebug('Error completing sequence:', error);
                         button.enable();
                     }
                 },
@@ -319,7 +332,7 @@
                     
                     state.sequenceRunning = true;
                     button.disable();
-                    utils.logDebug('78 Starting TSN Reset sequence...');
+                    utils.logDebug('79 Starting TSN Reset sequence...');
 
                     try {
                         const usedFallback = await sequence.step1();
@@ -403,6 +416,19 @@
                         { held: true },
                         'STEP 3: Placing agent on hold'
                     );
+                    
+                    // Pause recording after placing agent on hold
+                    try {
+                        await api.call(
+                            `https://api.${CONFIG.ENVIRONMENT}/api/v2/conversations/calls/${state.conversationId}`,
+                            'PATCH',
+                            { recordingState: 'PAUSED' },
+                            'STEP 3b: Pausing recording'
+                        );
+                    } catch (error) {
+                        utils.logDebug('Warning: Failed to pause recording:', error);
+                        // Continue execution even if recording pause fails
+                    }
                     
                     // Initialize timing tracking
                     state.holdStartTime = Date.now();
