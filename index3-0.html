@@ -1,574 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Call Handler - EventBridge</title>
-        <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-        <style>
-            .action-button {
-                background-color: black;
-                color: yellow;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 14px;
-                margin-top: 0px;
-            }
-            
-            .action-button:disabled {
-                background-color: #666;
-                color: #ccc;
-                cursor: not-allowed;
-            }
-            
-            .center {
-                text-align: center;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="center">
-            <button id="tsnResetButton" class="action-button" onclick="startSequence()">TSN Reset (Conference)</button>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Text Input</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        .output {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+            border-radius: 4px;
+        }
+        .output-label {
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .output-value {
+            color: #333;
+            font-family: monospace;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <label for="textInput">Enter your text:</label>
+        <input type="text" id="textInput" placeholder="Type something..." autocomplete="off">
+        
+        <div class="output">
+            <div class="output-label">Output Parameter:</div>
+            <div class="output-value" id="outputParam">""</div>
         </div>
-    
-        <script>
-            // Configuration constants
-            const CONFIG = {
-                CLIENT_ID: 'c7d2a0f9-cfa1-4001-aeba-a5550f690ab1',
-                ENVIRONMENT: 'euw2.pure.cloud',
-                REDIRECT_URI: 'https://clivejdixon.github.io/index3-0.html',
-                QUEUE_ID: '8e75c14e-3d97-44df-9e81-10421015f9cb',
-                SPEAK_TO_INITIAL: 'BOTH',
-                SPEAK_TO_FINAL: 'CONFERENCE',
-                WAIT_TIME: 1000,
-                MONITORING_WAIT: 59000,
-                MONITORING_INTERVAL: 2000,
-                SESSION_KEY: 'tsn_reset_session'
-            };
+    </div>
 
-            // Application state
-            const state = {
-                eventBridgeId: null,
-                isMonitoringParticipants: false,
-                sequenceRunning: false,
-                monitoringInterval: null,
-                holdStartTime: null,
-                apiCallCount: 0,
-                gToken: null,
-                conversationId: null,
-                agentParticipantId: null,
-                customerParticipantId: null,
-                consultingUserId: null,
-                BASE_API_URL: null
-            };
-
-            // Utility functions
-            const utils = {
-                sleep: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
-                
-                logDebug: (message, data = null) => {
-                    console.log(`[DEBUG] ${message}`, data || '');
-                },
-                
-                getUrlParams: () => {
-                    const urlParams = new URLSearchParams(window.location.search);
-                    return {
-                        conversationId: urlParams.get('conversationId'),
-                        agentParticipantId: urlParams.get('agentParticipantId'),
-                        customerParticipantId: urlParams.get('customerParticipantId'),
-                        consultingUserId: urlParams.get('consultingUserId')
-                    };
-                },
-                
-                parseHashParams: () => {
-                    const hash = window.location.hash.substring(1);
-                    const params = new URLSearchParams(hash);
-                    const token = params.get('access_token');
-                    const stateParam = params.get('state');
-
-                    if (stateParam) {
-                        try {
-                            const decodedState = decodeURIComponent(stateParam);
-                            const parsed = JSON.parse(atob(decodedState));
-                            return { token, ...parsed };
-                        } catch (e) {
-                            utils.logDebug('State decoding error:', e);
-                        }
-                    }
-                    return { token };
-                },
-                
-                validateParams: (params) => {
-                    return params.conversationId && params.agentParticipantId && 
-                           params.customerParticipantId && params.consultingUserId;
-                }
-            };
-
-            // Session management
-            const session = {
-                save: (data) => {
-                    try {
-                        const sessionData = { ...data, timestamp: Date.now() };
-                        sessionStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(sessionData));
-                        utils.logDebug('Session data saved');
-                    } catch (e) {
-                        utils.logDebug('Could not save session data:', e);
-                    }
-                },
-
-                load: () => {
-                    try {
-                        const data = sessionStorage.getItem(CONFIG.SESSION_KEY);
-                        return data ? JSON.parse(data) : null;
-                    } catch (e) {
-                        utils.logDebug('Could not load session data:', e);
-                        return null;
-                    }
-                },
-
-                clear: () => {
-                    try {
-                        sessionStorage.removeItem(CONFIG.SESSION_KEY);
-                        utils.logDebug('Session data cleared');
-                    } catch (e) {
-                        utils.logDebug('Could not clear session data:', e);
-                    }
-                }
-            };
-
-            // Button management
-            const button = {
-                disable: () => {
-                    const btn = document.getElementById('tsnResetButton');
-                    btn.disabled = true;
-                    btn.textContent = 'TSN Reset Running...';
-                    utils.logDebug('Button disabled');
-                },
-
-                enable: () => {
-                    const btn = document.getElementById('tsnResetButton');
-                    btn.disabled = false;
-                    btn.textContent = 'TSN Reset (Conference)';
-                    utils.logDebug('Button enabled');
-                }
-            };
-
-            // API management
-            const api = {
-                call: async (endpoint, method, data, description = '') => {
-                    utils.logDebug(`${description} - ${method} ${endpoint}`);
-                    
-                    try {
-                        const response = await $.ajax({
-                            url: endpoint,
-                            type: method,
-                            beforeSend: (xhr) => xhr.setRequestHeader('Authorization', 'Bearer ' + state.gToken),
-                            data: data ? JSON.stringify(data) : undefined,
-                            contentType: 'application/json'
-                        });
-                        
-                        utils.logDebug(`✅ ${description} - SUCCESS`);
-                        return response;
-                    } catch (error) {
-                        utils.logDebug(`❌ ${description} - ERROR:`, {
-                            status: error.status,
-                            statusText: error.statusText,
-                            responseText: error.responseText
-                        });
-                        throw error;
-                    }
-                },
-
-                checkParticipantCount: async () => {
-                    state.apiCallCount++;
-                    
-                    const response = await api.call(
-                        state.BASE_API_URL,
-                        'GET',
-                        null,
-                        'Checking participant count'
-                    );
-                    
-                    const activeParticipants = response.participants.filter(p => 
-                        p.state === 'connected' || p.state === 'alerting'
-                    );
-                    
-                    utils.logDebug(`Current participant count: ${activeParticipants.length} (API call #${state.apiCallCount})`);
-                    
-                    // Update session with current API call count
-                    const sessionData = session.load();
-                    if (sessionData) {
-                        session.save({ ...sessionData, apiCallCount: state.apiCallCount });
-                    }
-                    
-                    return activeParticipants.length;
-                }
-            };
-
-            // Monitoring functions
-            const monitoring = {
-                start: () => {
-                    if (state.isMonitoringParticipants) {
-                        utils.logDebug('Monitoring already active');
-                        return;
-                    }
-                    
-                    state.isMonitoringParticipants = true;
-                    utils.logDebug('Starting participant monitoring...');
-                    
-                    state.monitoringInterval = setInterval(async () => {
-                        try {
-                            const participantCount = await api.checkParticipantCount();
-                            
-                            if (participantCount < 3) {
-                                const totalTimeSeconds = Math.floor((Date.now() - state.holdStartTime) / 1000);
-                                utils.logDebug(`Participant count dropped below 3 after ${totalTimeSeconds} seconds from hold start (58s wait + ${state.apiCallCount * 2}s API calls), taking agent off hold...`);
-                                await monitoring.complete();
-                            }
-                        } catch (error) {
-                            utils.logDebug('Error during monitoring:', error);
-                        }
-                    }, CONFIG.MONITORING_INTERVAL);
-                },
-
-                complete: async () => {
-                    try {
-                        // Resume recording before taking agent off hold
-                        try {
-                            await api.call(
-                                `https://api.${CONFIG.ENVIRONMENT}/api/v2/conversations/calls/${state.conversationId}`,
-                                'PATCH',
-                                { recordingState: 'ACTIVE' },
-                                'FINAL STEP A: Resuming recording'
-                            );
-                        } catch (error) {
-                            utils.logDebug('Warning: Failed to resume recording:', error);
-                            // Continue execution even if recording resume fails
-                        }
-                        
-                        await api.call(
-                            `${state.BASE_API_URL}/participants/${state.agentParticipantId}`,
-                            'PATCH',
-                            { held: false },
-                            'FINAL STEP B: Taking agent off hold'
-                        );
-                        
-                        utils.logDebug('Agent taken off hold - TSN Reset sequence complete!');
-                        monitoring.cleanup();
-                        session.clear();
-                        button.enable();
-                    } catch (error) {
-                        utils.logDebug('Error completing sequence:', error);
-                        button.enable();
-                    }
-                },
-
-                cleanup: () => {
-                    if (state.monitoringInterval) {
-                        clearInterval(state.monitoringInterval);
-                        state.monitoringInterval = null;
-                    }
-                    state.isMonitoringParticipants = false;
-                    state.holdStartTime = null;
-                    state.apiCallCount = 0;
-                    utils.logDebug('Monitoring cleaned up');
-                },
-
-                resume: () => {
-                    const sessionData = session.load();
-                    if (!sessionData) return;
-
-                    if (sessionData.pendingMonitoring) {
-                        const timeSinceHold = Date.now() - sessionData.holdTimestamp;
-                        const remainingWait = CONFIG.MONITORING_WAIT - timeSinceHold;
-                        
-                        utils.logDebug('Found pending monitoring session');
-                        button.disable();
-                        state.holdStartTime = sessionData.holdTimestamp;
-                        state.apiCallCount = sessionData.apiCallCount || 0;
-                        
-                        const startMonitoring = () => {
-                            monitoring.start();
-                            session.save({
-                                ...sessionData,
-                                pendingMonitoring: false,
-                                monitoringActive: true,
-                                holdTimestamp: state.holdStartTime,
-                                apiCallCount: state.apiCallCount
-                            });
-                        };
-
-                        if (remainingWait > 0) {
-                            utils.logDebug(`Resuming wait for ${Math.floor(remainingWait / 1000)} more seconds...`);
-                            setTimeout(startMonitoring, remainingWait);
-                        } else {
-                            utils.logDebug('Wait period elapsed, starting monitoring immediately...');
-                            startMonitoring();
-                        }
-                    } else if (sessionData.monitoringActive) {
-                        utils.logDebug('Resuming active monitoring...');
-                        button.disable();
-                        state.holdStartTime = sessionData.holdTimestamp;
-                        state.apiCallCount = sessionData.apiCallCount || 0;
-                        monitoring.start();
-                    }
-                }
-            };
-
-            // Sequence execution
-            const sequence = {
-                execute: async () => {
-                    if (!utils.validateParams(state) || !state.gToken) {
-                        utils.logDebug('Missing required parameters for sequence execution');
-                        return;
-                    }
-                    
-                    if (state.sequenceRunning) {
-                        utils.logDebug('Sequence already running, ignoring request');
-                        return;
-                    }
-                    
-                    state.sequenceRunning = true;
-                    button.disable();
-                    utils.logDebug('79 Starting TSN Reset sequence...');
-
-                    try {
-                        const usedFallback = await sequence.step1();
-                        if (usedFallback) {
-                            // Fallback path already completed - exit here
-                            return;
-                        }
-                        
-                        // Normal path continues
-                        await utils.sleep(CONFIG.WAIT_TIME);
-                        await sequence.step2();
-                        await utils.sleep(CONFIG.WAIT_TIME);
-                        await sequence.step3();
-                        
-                    } catch (error) {
-                        utils.logDebug('Sequence error:', error);
-                        utils.logDebug(`SEQUENCE FAILED: ${error.responseText || error.message}`);
-                        button.enable();
-                    } finally {
-                        state.sequenceRunning = false;
-                    }
-                },
-
-                step1: async () => {
-                    try {
-                        await api.call(
-                            `${state.BASE_API_URL}/participants/${state.customerParticipantId}/consult`,
-                            'POST',
-                            {
-                                speakTo: CONFIG.SPEAK_TO_INITIAL,
-                                destination: { queueId: CONFIG.QUEUE_ID },
-                                consultingUserId: state.consultingUserId
-                            },
-                            'STEP 1a: Creating consultation'
-                        );
-                        return false; // Normal path
-                    } catch (error) {
-                        utils.logDebug('Step 1a failed, using fallback approach (conference already active)...');
-                        
-                        // Check if we're already in a conference by trying to add another queue participant
-                        await api.call(
-                            `${state.BASE_API_URL}/participants`,
-                            'POST',
-                            { participants: [{ queueId: CONFIG.QUEUE_ID }] },
-                            'STEP 1b: Adding queue to conference (fallback)'
-                        );
-                        
-                        utils.logDebug('Conference already active - skipping to hold step');
-                        await utils.sleep(CONFIG.WAIT_TIME);
-                        await sequence.step3();
-                        return true; // Fallback path completed
-                    }
-                },
-
-                step2: async () => {
-                    try {
-                        await api.call(
-                            `${state.BASE_API_URL}/participants/${state.customerParticipantId}/consult`,
-                            'PATCH',
-                            {
-                                speakTo: CONFIG.SPEAK_TO_FINAL,
-                                consultingUserId: state.consultingUserId
-                            },
-                            'STEP 2a: Updating consultation speak mode'
-                        );
-                    } catch (error) {
-                        utils.logDebug('Step 2a failed, trying fallback approach...');
-                        await api.call(
-                            `${state.BASE_API_URL}/participants`,
-                            'POST',
-                            { participants: [{ queueId: CONFIG.QUEUE_ID }] },
-                            'STEP 2b: Adding queue to conference (fallback)'
-                        );
-                    }
-                },
-
-                step3: async () => {
-                    await api.call(
-                        `${state.BASE_API_URL}/participants/${state.agentParticipantId}`,
-                        'PATCH',
-                        { held: true },
-                        'STEP 3: Placing agent on hold'
-                    );
-                    
-                    // Pause recording after placing agent on hold
-                    try {
-                        await api.call(
-                            `https://api.${CONFIG.ENVIRONMENT}/api/v2/conversations/calls/${state.conversationId}`,
-                            'PATCH',
-                            { recordingState: 'PAUSED' },
-                            'STEP 3b: Pausing recording'
-                        );
-                    } catch (error) {
-                        utils.logDebug('Warning: Failed to pause recording:', error);
-                        // Continue execution even if recording pause fails
-                    }
-                    
-                    // Initialize timing tracking
-                    state.holdStartTime = Date.now();
-                    state.apiCallCount = 0;
-
-                    // Save state for monitoring
-                    session.save({
-                        conversationId: state.conversationId,
-                        agentParticipantId: state.agentParticipantId,
-                        customerParticipantId: state.customerParticipantId,
-                        consultingUserId: state.consultingUserId,
-                        token: state.gToken,
-                        holdTimestamp: state.holdStartTime,
-                        pendingMonitoring: true,
-                        apiCallCount: state.apiCallCount
-                    });
-
-                    utils.logDebug('Starting 58-second wait...');
-                    setTimeout(() => {
-                        utils.logDebug('Wait completed, starting monitoring...');
-                        monitoring.start();
-                    }, CONFIG.MONITORING_WAIT);
-                }
-            };
-
-            // Authentication and initialization
-            const auth = {
-                initializeFromSession: (sessionData, urlParams) => {
-                    const hasUrlParams = utils.validateParams(urlParams);
-                    
-                    if (hasUrlParams && sessionData.conversationId !== urlParams.conversationId) {
-                        utils.logDebug(`URL conversation ID differs from session - clearing old session`);
-                        utils.logDebug(`URL: ${urlParams.conversationId} vs Session: ${sessionData.conversationId}`);
-                        session.clear();
-                        return false;
-                    }
-
-                    // Restore state from session
-                    Object.assign(state, {
-                        gToken: sessionData.token,
-                        conversationId: sessionData.conversationId,
-                        agentParticipantId: sessionData.agentParticipantId,
-                        customerParticipantId: sessionData.customerParticipantId,
-                        consultingUserId: sessionData.consultingUserId,
-                        BASE_API_URL: `https://api.${CONFIG.ENVIRONMENT}/api/v2/conversations/calls/${sessionData.conversationId}`
-                    });
-
-                    utils.logDebug('Session restored successfully');
-                    utils.logDebug(`Conversation ID: ${state.conversationId}`);
-                    utils.logDebug('Ready for TSN Reset');
-                    
-                    setTimeout(monitoring.resume, 1000);
-                    return true;
-                },
-
-                redirectToOAuth: (urlParams) => {
-                    const oauthState = btoa(JSON.stringify(urlParams));
-                    const authUrl = `https://login.${CONFIG.ENVIRONMENT}/oauth/authorize?` + 
-                        new URLSearchParams({
-                            response_type: 'token',
-                            client_id: CONFIG.CLIENT_ID,
-                            redirect_uri: CONFIG.REDIRECT_URI,
-                            state: oauthState
-                        });
-                    
-                    utils.logDebug('Redirecting to OAuth...');
-                    setTimeout(() => window.location.replace(authUrl), 1000);
-                },
-
-                processOAuthCallback: (hashParams) => {
-                    if (!utils.validateParams(hashParams)) {
-                        utils.logDebug('Missing parameters in OAuth callback');
-                        return false;
-                    }
-
-                    // Initialize state from OAuth callback
-                    Object.assign(state, {
-                        gToken: hashParams.token,
-                        conversationId: hashParams.conversationId,
-                        agentParticipantId: hashParams.agentParticipantId,
-                        customerParticipantId: hashParams.customerParticipantId,
-                        consultingUserId: hashParams.consultingUserId,
-                        BASE_API_URL: `https://api.${CONFIG.ENVIRONMENT}/api/v2/conversations/calls/${hashParams.conversationId}`
-                    });
-
-                    // Save to session storage
-                    session.save({
-                        token: state.gToken,
-                        conversationId: state.conversationId,
-                        agentParticipantId: state.agentParticipantId,
-                        customerParticipantId: state.customerParticipantId,
-                        consultingUserId: state.consultingUserId
-                    });
-
-                    utils.logDebug('Authentication complete');
-                    utils.logDebug(`Conversation ID: ${state.conversationId}`);
-                    utils.logDebug('Ready for TSN Reset');
-                    return true;
-                }
-            };
-
-            // Main entry points
-            window.startSequence = sequence.execute;
-
-            // Application initialization
-            (function initialize() {
-                utils.logDebug('Application starting...');
-                
-                const urlParams = utils.getUrlParams();
-                const sessionData = session.load();
-                const hashParams = utils.parseHashParams();
-
-                // Handle session restoration
-                if (sessionData && sessionData.token) {
-                    if (auth.initializeFromSession(sessionData, urlParams)) {
-                        return;
-                    }
-                }
-
-                // Handle OAuth callback
-                if (hashParams.token) {
-                    if (auth.processOAuthCallback(hashParams)) {
-                        return;
-                    }
-                }
-
-                // Handle new OAuth initiation
-                if (utils.validateParams(urlParams)) {
-                    auth.redirectToOAuth(urlParams);
-                } else {
-                    utils.logDebug('Missing required URL parameters');
-                }
-            })();
-
-            // Cleanup on page unload
-            window.addEventListener('beforeunload', () => {
-                if (state.isMonitoringParticipants) {
-                    utils.logDebug('Page unload during monitoring - session preserved');
-                }
-            });
-        </script>
-    </body>
+    <script>
+        const input = document.getElementById('textInput');
+        const output = document.getElementById('outputParam');
+        
+        // Store the output value that can be accessed by the calling application
+        window.outputParameter = '';
+        
+        // Update output in real-time as user types
+        input.addEventListener('input', function(e) {
+            const value = e.target.value;
+            window.outputParameter = value;
+            output.textContent = JSON.stringify(value);
+            
+            // Dispatch custom event that calling application can listen to
+            window.dispatchEvent(new CustomEvent('outputParameterChanged', {
+                detail: { value: value }
+            }));
+        });
+    </script>
+</body>
 </html>
