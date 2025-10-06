@@ -80,33 +80,47 @@
         window.outputParameter = initialValue;
         output.textContent = JSON.stringify(initialValue);
         
+        // Genesys Cloud Custom Component communication
+        function notifyGenesys(value) {
+            // Method 1: Genesys standard postMessage format
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'scripter:variable',
+                    key: 'userinput',
+                    value: value
+                }, '*');
+                
+                // Method 2: Alternative Genesys format
+                window.parent.postMessage({
+                    variable: 'userinput',
+                    value: value
+                }, '*');
+                
+                // Method 3: Generic postMessage (for other integrations)
+                window.parent.postMessage({
+                    type: 'outputParameterChanged',
+                    value: value
+                }, '*');
+            }
+        }
+        
         // Update output in real-time as user types
         input.addEventListener('input', function(e) {
             const value = e.target.value;
             window.outputParameter = value;
             output.textContent = JSON.stringify(value);
             
-            // Dispatch custom event that calling application can listen to
+            // Notify Genesys Cloud
+            notifyGenesys(value);
+            
+            // Dispatch custom event for direct JavaScript access
             window.dispatchEvent(new CustomEvent('outputParameterChanged', {
                 detail: { value: value }
             }));
-            
-            // Also send to parent window if embedded in iframe
-            if (window.parent !== window) {
-                window.parent.postMessage({
-                    type: 'outputParameterChanged',
-                    value: value
-                }, '*');
-            }
         });
         
         // Send initial value on load
-        if (window.parent !== window) {
-            window.parent.postMessage({
-                type: 'outputParameterChanged',
-                value: initialValue
-            }, '*');
-        }
+        notifyGenesys(initialValue);
     </script>
 </body>
 </html>
