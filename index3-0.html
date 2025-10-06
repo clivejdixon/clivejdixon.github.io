@@ -71,8 +71,14 @@
         const input = document.getElementById('textInput');
         const output = document.getElementById('outputParam');
         
-        // Store the output value that can be accessed by the calling application
-        window.outputParameter = '';
+        // Read initial value from URL parameter (default to empty string)
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialValue = urlParams.get('outputparam') || '';
+        
+        // Set initial value
+        input.value = initialValue;
+        window.outputParameter = initialValue;
+        output.textContent = JSON.stringify(initialValue);
         
         // Update output in real-time as user types
         input.addEventListener('input', function(e) {
@@ -84,7 +90,23 @@
             window.dispatchEvent(new CustomEvent('outputParameterChanged', {
                 detail: { value: value }
             }));
+            
+            // Also send to parent window if embedded in iframe
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'outputParameterChanged',
+                    value: value
+                }, '*');
+            }
         });
+        
+        // Send initial value on load
+        if (window.parent !== window) {
+            window.parent.postMessage({
+                type: 'outputParameterChanged',
+                value: initialValue
+            }, '*');
+        }
     </script>
 </body>
 </html>
